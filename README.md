@@ -197,39 +197,27 @@ docker exec careerops-collector uv run src/careerops/main.py --country Germany -
 
 **Aliases PT suportados**: `brasil`, `holanda`, `alemanha`, `reino unido`/`uk`/`inglaterra`, `irlanda`, `polonia`, `suica`, `dinamarca`, `noruega`, `suecia`, `austria`, `finlandia`, `franca`, `canada`, `mundo`/`global`.
 
-### Opção B: Adicionar/Remover Países no Agendamento Automático
+### Opção B: Agendamento Automático (sem países hardcoded)
 
-Edite `scripts/install_cron_jobs.sh` → array `SCHEDULES`:
+O cron **não** decide países — ele só marca *quando* rodar. Os países vêm do `config.json`. Edite `scripts/install_cron_jobs.sh` → array `SCHEDULES` (apenas horários):
 
 ```bash
 readonly SCHEDULES=(
-    # Brasil - 4x/dia (remoto only)
-    "0 6 * * * Brazil"
-    "0 11 * * * Brazil"
-    "0 16 * * * Brazil"
-    "0 21 * * * Brazil digest"
-
-    # Europa manhã (horário servidor ≈ manhã Europa)
-    "0 8 * * * Netherlands"
-    "0 8 * * * Germany"
-    "0 9 * * * Ireland"
-    "0 9 * * * United Kingdom"
-    "0 9 * * * Poland"
-    "0 9 * * * Switzerland"
-
-    # América do Norte
-    "0 8 * * * Canada"
-
-    # Global
-    "0 23 * * * worldwide"
+    "0 6 * * *"          # varre config.json
+    "0 11 * * *"
+    "0 16 * * *"
+    "0 21 * * * digest"  # última do dia dispara digest
+    "0 8 * * *"
+    "0 9 * * *"
+    "0 23 * * *"
 )
 ```
 
-**Formato**: `"min hora dia mês semana País [digest]"`
-- `digest` = dispara resumo Telegram ao final (use apenas 1x/dia)
-- País = nome canônico JobSpy ou alias PT
+**Formato**: `"minuto hora dia mês semana [digest]"`
+- `digest` = dispara resumo Telegram ao final (use em **apenas 1** job/dia)
+- Sem país: o wrapper lê `config.json` e varre os `targets` definidos lá
 
-Depois reinstale:
+Para mudar *quais* países/modalidades → edite `config.json`, não o cron. Depois reinstale:
 ```bash
 ./scripts/install_cron_jobs.sh install
 ```
@@ -399,15 +387,16 @@ services:
 |----------|---------|
 | Computador desligado no horário | Wrapper idempotente → rode manualmente quando ligar |
 | Execução duplicada | `vagas_processadas.txt` evita duplicatas |
-| Múltiplos digests/dia | Flag `--digest` apenas na última execução BR |
-| Rastreabilidade | Logs por país/data: `logs/careerops-brazil-20260808.log` |
+| Múltiplos digests/dia | Flag `digest` apenas em 1 job/dia (último) |
+| Rastreabilidade | Logs por dia: `logs/careerops-YYYYMMDD.log` |
+| Quais países varrer | Vem do `config.json` (não do cron) — edite o JSON, não o agendador |
 
 **Comandos de cron:**
 ```bash
 ./scripts/install_cron_jobs.sh install   # instala/atualiza
 ./scripts/install_cron_jobs.sh list      # mostra ativos
 ./scripts/install_cron_jobs.sh remove    # remove todos
-./scripts/install_cron_jobs.sh test BR   # testa país
+./scripts/install_cron_jobs.sh test      # testa 1 execução (lê config.json)
 ```
 
 ---

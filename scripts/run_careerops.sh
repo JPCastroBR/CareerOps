@@ -1,33 +1,50 @@
 #!/usr/bin/env bash
-# Wrapper genérico: sobe o stack CareerOps (se necessário) e roda a varredura
-# de UM país. Uso: run_careerops.sh <pais> [digest]
-#   <pais>  : nome canônico (Brazil, Netherlands, ...) ou alias PT (brasil, holanda)
-#   [digest]: se passado, dispara o resumo diário (n8n -> Telegram) ao final
+# Wrapper: sobe o stack CareerOps (se necessário) e roda a varredura.
+#
+# USAGE:
+#   run_careerops.sh                 # varre os países definidos em config.json
+#   run_careerops.sh digest          # igual acima + dispara digest diário
+#   run_careerops.sh <pais>          # varre UM país isolado (ex: Brazil, holanda)
+#   run_careerops.sh <pais> digest   # país isolado + digest
+#
+# Sem país: o main.py lê config.json e varre os targets definidos lá.
+# Com país: força varredura isolada (ignora config.json para a escolha do país).
 set -uo pipefail
 
 PROJECT=/home/castro/Projects/CareerOps
 LOGDIR="$PROJECT/logs"
 mkdir -p "$LOGDIR"
 
-COUNTRY="${1:-}"
-DIGEST_FLAG=""
-[ "${2:-}" = "digest" ] && DIGEST_FLAG="--digest"
+ARG1="${1:-}"
+ARG2="${2:-}"
 
-if [ -z "$COUNTRY" ]; then
-  echo "Uso: run_careerops.sh <pais> [digest]"
-  exit 2
+# Resolve country + digest from args (order-independent-ish)
+COUNTRY=""
+DIGEST_FLAG=""
+if [ "$ARG1" = "digest" ]; then
+    DIGEST_FLAG="--digest"
+elif [ -n "$ARG1" ]; then
+    COUNTRY="$ARG1"
+    [ "$ARG2" = "digest" ] && DIGEST_FLAG="--digest"
 fi
 
-# Create dated log file at runtime
-LOG="$LOGDIR/careerops-$(echo "$COUNTRY" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-$(date +%Y%m%d).log"
+# Log file (no country in name when scanning config.json)
+if [ -n "$COUNTRY" ]; then
+    LOG="$LOGDIR/careerops-$(echo "$COUNTRY" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-$(date +%Y%m%d).log"
+    MODE_ARGS="--country $COUNTRY"
+else
+    LOG="$LOGDIR/careerops-$(date +%Y%m%d).log"
+    MODE_ARGS=""   # no --country => main.py uses config.json targets
+fi
 
 cd "$PROJECT" || { echo "Falha ao acessar $PROJECT"; exit 3; }
 
 echo "[$(date)] Garantindo stack CareerOps (n8n + app)..."
 docker compose up -d >/dev/null 2>&1 || { echo "Falha ao subir docker compose"; exit 4; }
 
-echo "[$(date)] >>> Iniciando varredura: pais=$COUNTRY digest=${DIGEST_FLAG:-off}" | tee -a "$LOG"
+echo "[$(date)] >>> Iniciando varredura (modo: ${COUNTRY:-config.json}) digest=${DIGEST_FLAG:-off}" | tee -a "$LOG"
 
-docker compose run --rm app uv run src/careerops/main.py --country "$COUNTRY" $DIGEST_FLAG 2>&1 | tee -a "$LOG"
+# shellcheck disable=SC2086
+docker compose run --rm app uv run src/careerops/main.py $MODE_ARGS $DIGEST_FLAG 2>&1 | tee -a "$LOG"
 
-echo "[$(date)] <<< Fim da varredura pais=$COUNTRY."
+echo "[$(date)] <<< Fim da varredura (modo: ${COUNTRY:-config.json})."
