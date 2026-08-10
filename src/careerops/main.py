@@ -1,15 +1,17 @@
 import os
 import time
+import json
 import argparse
 import pandas as pd
 import requests
 from careerops.collector.jobspy import fetch_recent_jobs
 
 ARQUIVO_MEMORIA = "vagas_processadas.txt"
+ARQUIVO_CONFIG = "config.json"
 
 # ---------------------------------------------------------------------------
-# Aliases: o usuário pensa em português, o jobspy usa nomes em inglês.
-# Qualquer chave (minúscula) resolve para o nome canônico usado em `alvos`.
+# Aliases: user thinks in Portuguese, JobSpy uses English names.
+# Any key (lowercase) resolves to the canonical name used in `targets`.
 # ---------------------------------------------------------------------------
 ALIASES = {
     "brazil": "Brazil", "brasil": "Brazil",
@@ -30,6 +32,33 @@ ALIASES = {
     "france": "France", "frança": "France", "franca": "France",
     "worldwide": "worldwide", "mundo": "worldwide", "global": "worldwide",
 }
+
+# Safe fallback when config.json is absent: search worldwide, remote-only.
+DEFAULT_CONFIG = {
+    "search_query": '"Site Reliability Engineer" OR "SRE" OR "Infrastructure Engineer" OR "Cloud Infrastructure" OR "DevOps"',
+    "results_per_country": 200,
+    "targets": [{"country": "worldwide", "work_mode": "remote"}],
+    "title_blocklist": [],
+    "brazil_remote_only": True,
+}
+
+
+def carregar_config() -> dict:
+    """Load external config.json if present, else return safe DEFAULT_CONFIG."""
+    if not os.path.exists(ARQUIVO_CONFIG):
+        print("⚙️  config.json ausente — usando fallback seguro (worldwide, remote-only).")
+        return dict(DEFAULT_CONFIG)
+    try:
+        with open(ARQUIVO_CONFIG, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        # Merge with defaults for any missing keys
+        merged = dict(DEFAULT_CONFIG)
+        merged.update({k: v for k, v in cfg.items() if v is not None})
+        print(f"⚙️  config.json carregado ({len(merged.get('targets', []))} alvo(s) configurado(s)).")
+        return merged
+    except Exception as e:
+        print(f"⚠️  Falha ao ler config.json ({e}) — usando fallback seguro.")
+        return dict(DEFAULT_CONFIG)
 
 
 def parse_args():
@@ -100,53 +129,31 @@ def salvar_na_memoria(url):
 
 def main():
     args = parse_args()
+    cfg = carregar_config()
 
-    query = '\"Site Reliability Engineer\" OR \"SRE\" OR \"Infrastructure Engineer\" OR \"Cloud Infrastructure\" OR \"DevOps\"'
+    query = cfg.get("search_query", DEFAULT_CONFIG["search_query"])
+    results_per_country = cfg.get("results_per_country", DEFAULT_CONFIG["results_per_country"])
 
-    # Mapa de Busca Global (Varredura Completa)
-    alvos = [
-        # --- FOCO EXCLUSIVO REMOTO NACIONAL ---
-        {"pais": "Brazil", "remoto": True},
+    # Targets from config.json → alvos list; work_mode maps to is_remote:
+    #   "remote"  → is_remote=True only
+    #   "onsite"  → is_remote=False only
+    #   "any"     → both True and False (two entries)
+    #   "hybrid"  → treated as onsite+remote (both)
+    raw_targets = cfg.get("targets", DEFAULT_CONFIG["targets"])
+    alvos = []
+    for t in raw_targets:
+        pais = t.get("country")
+        modo = (t.get("work_mode") or "any").lower()
+        if modo == "remote":
+            alvos.append({"pais": pais, "remoto": True})
+        elif modo == "onsite":
+            alvos.append({"pais": pais, "remoto": False})
+        else:  # "any" or "hybrid" → both modes
+            alvos.append({"pais": pais, "remoto": False})
+            alvos.append({"pais": pais, "remoto": True})
 
-        # --- EXCELENTE CUSTO-BENEFÍCIO (Altos salários + Muitas vagas em Inglês + Visto facilitado) ---
-        {"pais": "Netherlands", "remoto": False},
-        {"pais": "Netherlands", "remoto": True},
-        {"pais": "United Kingdom", "remoto": False},
-        {"pais": "United Kingdom", "remoto": True},
-        {"pais": "Ireland", "remoto": False},
-        {"pais": "Ireland", "remoto": True},
-
-        # --- ÓTIMO CUSTO DE VIDA (Custo de vida baixo + Salário tech competitivo) ---
-        {"pais": "Poland", "remoto": False},
-        {"pais": "Poland", "remoto": True},
-
-        # --- MAIORES SALÁRIOS ABSOLUTOS (Porém custo de vida muito alto ou mercado mais restrito) ---
-        {"pais": "Switzerland", "remoto": False},
-        {"pais": "Switzerland", "remoto": True},
-        {"pais": "Luxembourg", "remoto": False},
-        {"pais": "Luxembourg", "remoto": True},
-        {"pais": "Denmark", "remoto": False},
-        {"pais": "Denmark", "remoto": True},
-        {"pais": "Norway", "remoto": False},
-        {"pais": "Norway", "remoto": True},
-        {"pais": "Germany", "remoto": False},
-        {"pais": "Germany", "remoto": True},
-
-        # --- MERCADOS INTERNACIONAIS COMPLEMENTARES ---
-        {"pais": "Canada", "remoto": False},
-        {"pais": "Canada", "remoto": True},
-        {"pais": "Sweden", "remoto": False},
-        {"pais": "Sweden", "remoto": True},
-        {"pais": "Austria", "remoto": False},
-        {"pais": "Austria", "remoto": True},
-        {"pais": "Finland", "remoto": False},
-        {"pais": "Finland", "remoto": True},
-        {"pais": "France", "remoto": False},
-        {"pais": "France", "remoto": True},
-
-        # --- BUSCA GLOBAL (O Pote de Ouro B2B/PJ) ---
-        {"pais": "worldwide", "remoto": True}
-    ]
+    brazil_remote_only = cfg.get("brazil_remote_only", True)
+    title_blocklist_cfg = cfg.get("title_blocklist", [])
 
     # ----------------------------------------------------------------------
     # Filtro por país / países / all (modos de varredura)
@@ -203,14 +210,14 @@ def main():
 
     todas_vagas = []
 
-    # 1. Coleta os dados de todos os países, Busca 200 vagas por país
+    # 1. Coleta os dados de todos os países, Busca N vagas por país (do config)
     for alvo in alvos:
         try:
             jobs_df = fetch_recent_jobs(
                 search_term=query,
                 location=alvo['pais'],
                 is_remote=alvo['remoto'],
-                results_wanted=200
+                results_wanted=results_per_country
             )
             if not jobs_df.empty:
                 todas_vagas.append(jobs_df)
@@ -229,7 +236,8 @@ def main():
     # =========================================================================
 
     # 🔴 APLICADO APENAS AO TÍTULO DA VAGA (Remove cargos fora do seu escopo)
-    palavras_proibidas_titulo = [
+    # Fonte: config.json "title_blocklist" se presente; senão usa BASE_TITLE_BLOCKLIST.
+    BASE_TITLE_BLOCKLIST = [
         # Níveis e Estágios
         "estágio", "junior", "jr", "pleno", "mid-level",
 
@@ -240,7 +248,7 @@ def main():
         "suporte", "service desk", "support", "helpdesk", "network engineer",
         "netwerkbeheerder", "lan", "wan", "telecom",
 
-        # Gestão e Negócios (Descomente se você NÃO quiser vagas de gerência)
+        # Gestão e Negócios
         "manager", "head of", "director", "delivery manager", "business analyst",
         "analista de negócios", "scrum", "agile", "product", "analyst", "analista",
 
@@ -260,6 +268,7 @@ def main():
         "sap", "protheus", "dynamics", "murex", "systeembeheerder", "systemadministrator:in",
         "systemingenieur", "plattformingeniør", "sales", "m/w/d", "m/f/d", "w/m/d", "w/m/x", "all genders"
     ]
+    palavras_proibidas_titulo = list(title_blocklist_cfg) if title_blocklist_cfg else BASE_TITLE_BLOCKLIST
 
     # 🔴 APLICADO APENAS À DESCRIÇÃO (Restrições imigratórias e contratuais)
     palavras_proibidas_descricao = [
@@ -335,7 +344,8 @@ def main():
         return (not is_remote) or indica_presencial
 
     antes_br = len(df_final)
-    df_final = df_final[~df_final.apply(eh_brasil_presencial, axis=1)]
+    if brazil_remote_only:
+        df_final = df_final[~df_final.apply(eh_brasil_presencial, axis=1)]
     descartadas_br = antes_br - len(df_final)
     if descartadas_br > 0:
         print(f"🇧🇷 Descartadas {descartadas_br} vaga(s) do Brasil presencial/híbrida (fora do escopo remoto).")

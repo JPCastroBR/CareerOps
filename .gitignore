@@ -25,6 +25,9 @@ vagas_processadas.txt
 credentials/
 *.json
 
+# Configuração externa (por usuário, NÃO versionar)
+config.json
+
 # VS Code
 .vscode/
 

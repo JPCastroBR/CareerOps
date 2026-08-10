@@ -128,6 +128,63 @@ O n8n lê dois Google Docs (PT + EN). Configure os IDs no workflow `careerops-cu
 
 ---
 
+## ⚙️ Configuração Externa (`config.json`)
+
+**Todo o "extra" (países, modalidade, query de busca, blocklist de títulos) vive num arquivo `config.json` separado do código.** Assim ninguém precisa fuçar no `main.py` para personalizar.
+
+### Como funciona
+- Se `config.json` **existir** → o pipeline usa países, modalidades, query e blocklist definidos nele.
+- Se `config.json` **não existir** → cai num fallback seguro: busca **`worldwide` (remoto-only)** apenas. Nunca quebra.
+- O arquivo está no `.gitignore` (não sobe pro repo) — cada usuário mantém o seu.
+
+### Estrutura (`config.json`)
+```json
+{
+  "_comment": "All keys optional. English canonical country names.",
+  "search_query": "\"Site Reliability Engineer\" OR \"SRE\" OR \"DevOps\"",
+  "results_per_country": 200,
+  "targets": [
+    { "country": "Brazil", "work_mode": "remote" },
+    { "country": "Netherlands", "work_mode": "any" },
+    { "country": "Germany", "work_mode": "onsite" },
+    { "country": "worldwide", "work_mode": "remote" }
+  ],
+  "title_blocklist": ["junior", "intern", "manager"],
+  "brazil_remote_only": true
+}
+```
+
+### `work_mode` (modalidade de trabalho)
+| Valor | Comportamento |
+|-------|---------------|
+| `remote` | Apenas vagas remotas (`is_remote=True`) |
+| `onsite` | Apenas presenciais (`is_remote=False`) |
+| `any` | Ambos (presencial + remoto) — gera 2 entradas por país |
+| `hybrid` | Tratado como `any` (presencial + remoto) |
+
+### `title_blocklist`
+Lista de termos (case-insensitive) que descartam a vaga pelo **título**. Se vazia/ausente, usa a `BASE_TITLE_BLOCKLIST` interna (safety net). Para usar **sua** lista, preencha este array.
+
+### `brazil_remote_only`
+- `true` (padrão): descarta vagas do Brasil presenciais/híbridas (filtro extra por regex em location+título).
+- `false`: mantém todas as modalidades do Brasil.
+
+### Exemplo prático
+Quer só **Brasil remoto** + **Portugal remoto** + **worldwide remoto**?
+```json
+{
+  "targets": [
+    { "country": "Brazil", "work_mode": "remote" },
+    { "country": "Portugal", "work_mode": "remote" },
+    { "country": "worldwide", "work_mode": "remote" }
+  ],
+  "brazil_remote_only": true
+}
+```
+Pronto — sem tocar no código.
+
+---
+
 ## 🌍 Personalizando Localidades (Países/Regiões)
 
 ### Opção A: Via CLI (execução única)
@@ -179,50 +236,51 @@ Depois reinstale:
 
 ### Opção C: Modo Remoto vs Presencial
 
-No `src/careerops/main.py`, lista `alvos` define país + `remoto: true/false`:
+No **`config.json`** (não no código), cada `target` aceita `work_mode`:
 
-```python
-alvos = [
-    {"pais": "Brazil", "remoto": True},      # só remoto
-    {"pais": "Germany", "remoto": False},    # presencial
-    {"pais": "Germany", "remoto": True},     # remoto
+| `work_mode` | Gera |
+|------------|------|
+| `remote` | 1 alvo remoto (`is_remote=True`) |
+| `onsite` | 1 alvo presencial (`is_remote=False`) |
+| `any` | 2 alvos (presencial + remoto) |
+| `hybrid` | igual a `any` |
+
+```json
+"targets": [
+  { "country": "Brazil", "work_mode": "remote" },
+  { "country": "Germany", "work_mode": "onsite" },
+  { "country": "Netherlands", "work_mode": "any" }
 ]
 ```
 
-- **Brasil**: hardcoded para descartar presencial/híbrido via regex
-- **Outros**: ambos os modos incluídos por padrão
+- **Brasil**: além do `work_mode`, há o flag `brazil_remote_only: true` que descarta presencial/híbrido por regex (location + título).
 
 ---
 
 ## 💼 Personalizando Tipo de Vaga (Query de Busca)
 
-### Query Principal (em `main.py`)
+### Query Principal (em `config.json`)
 
-```python
-query = '"Site Reliability Engineer" OR "SRE" OR "Infrastructure Engineer" OR "Cloud Infrastructure" OR "DevOps"'
+```json
+"search_query": "\"Site Reliability Engineer\" OR \"SRE\" OR \"Infrastructure Engineer\" OR \"Cloud Infrastructure\" OR \"DevOps\""
 ```
 
-**Para alterar**: edite a variável `query` no topo do `main()`.
+**Para alterar**: edite `search_query` no seu `config.json` (não mexa no código).
 
 **Exemplos de perfis:**
 
 | Perfil | Query Sugerida |
 |--------|----------------|
-| **Backend/Go** | `'"Golang" OR "Go Developer" OR "Backend Engineer" OR "API Developer"'` |
-| **Data Engineer** | `'"Data Engineer" OR "Data Platform" OR "ETL" OR "Airflow" OR "dbt"'` |
-| **Kubernetes/Platform** | `'"Platform Engineer" OR "Kubernetes" OR "K8s" OR "DevOps Platform"'` |
-| **Cloud Architect** | `'"Cloud Architect" OR "Solutions Architect" OR "AWS Architect"'` |
-| **Full Stack** | `'"Full Stack" OR "Fullstack" OR "React" AND "Node"'` |
+| **Backend/Go** | `"Golang" OR "Go Developer" OR "Backend Engineer" OR "API Developer"` |
+| **Data Engineer** | `"Data Engineer" OR "Data Platform" OR "ETL" OR "Airflow" OR "dbt"` |
+| **Kubernetes/Platform** | `"Platform Engineer" OR "Kubernetes" OR "K8s" OR "DevOps Platform"` |
+| **Cloud Architect** | `"Cloud Architect" OR "Solutions Architect" OR "AWS Architect"` |
+| **Full Stack** | `"Full Stack" OR "Fullstack" OR "React" AND "Node"` |
 
-### Resultados por País (parâmetro `results_wanted`)
+### Resultados por País (parâmetro `results_per_country` em `config.json`)
 
-```python
-jobs_df = fetch_recent_jobs(
-    search_term=query,
-    location=alvo['pais'],
-    is_remote=alvo['remoto'],
-    results_wanted=200  # ajuste aqui (max ~1000)
-)
+```json
+"results_per_country": 200
 ```
 
 ---
@@ -295,6 +353,7 @@ CareerOps/
 │   ├── run_careerops.sh      # Wrapper por país (log por país/data)
 │   └── run_digest.sh         # Disparo manual digest
 ├── credentials/           # NÃO VERSIONAR (google-sa.json)
+├── config.json             # NÃO VERSIONAR (config por usuário: países, query, blocklist)
 ├── logs/                  # NÃO VERSIONAR
 ├── docs/
 │   └── careerops-flow.html  # Diagrama visual do fluxo (abrir no navegador)
