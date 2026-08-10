@@ -1,7 +1,7 @@
 # CareerOps — Job Hunting Automation Pipeline
 
 > **Pipeline automatizado de busca, filtragem, análise com IA e registro de vagas.**
-> Configure seus critérios, rode localmente e receba apenas oportunidades relevantes no Google Sheets + Telegram.
+> Configure seus critérios, rode localmente e receba as vagas aprovadas (Sheets + Telegram) e o resumo diário consolidado.
 
 ---
 
@@ -11,7 +11,10 @@ Automatiza a procura de emprego para perfis tech (SRE, DevOps, Cloud, Platform, 
 - **Busca** em LinkedIn + Indeed via JobSpy
 - **Filtra** localmente (blocklist, anti-duplicidade, modalidade)
 - **Analisa** com IA (OpenAI/OpenRouter) comparando vaga vs seu currículo
-- **Roteia**: Score alto → Google Sheets (candidatar) | Score baixo → Telegram (revisar)
+- **Roteia por score** (via workflow `careerops-jobs`):
+  - Score ≥ 70 → **Google Sheets (aba Candidatar) + Telegram** (notificação)
+  - Score < 70 → **Google Sheets (aba Auditoria)** (registrada, não descartada)
+- **Resumo diário** (via workflow `careerops-digest`, separado): 1 mensagem Telegram consolidada
 - **Agenda**: Cron multi-país/horário, resiliente a desligamento (catch-up manual)
 
 ---
@@ -47,7 +50,9 @@ flowchart TD
     Sched --> CLI
     CLI --> J
     R -->|Sim| SH[Google Sheets: Candidatar]
-    R -->|Não| TG1[Telegram: Alerta Baixa]
+    R -->|Sim| TG1[Telegram: Vaga Aprovada]
+    R -->|Não| AU[Google Sheets: Auditoria]
+    D --> TG2
 ```
 
 ### Diagrama Visual (Imagem)
@@ -61,7 +66,7 @@ flowchart TD
 | **A: Coleta** | `main.py` + `jobspy.py` | Busca LinkedIn/Indeed, 200 vagas/país, query OR |
 | **B: Filtragem** | `filters.py` | Blocklist regex (título+descrição), anti-dup (`vagas_processadas.txt`), BR remoto-only |
 | **C: Envio** | `run_careerops.sh` | POST webhook n8n, rate-limit 2.5s, digest flag |
-| **D: Orquestração** | n8n (`careerops-jobs`) | Guard Rails → IA (OpenAI) → Score → Sheets/Telegram |
+| **D: Orquestração** | n8n (`careerops-jobs`) | Guard Rails → IA (OpenAI) → Score → Sheets (Candidatar ≥70 / Auditoria <70) + Telegram aprovadas |
 | **E: Digest** | n8n (`careerops-digest`) | Consolida dia → 1 msg Telegram (21h BR) |
 | **F: Currículo** | n8n (`careerops-curriculo`) | Google Docs PT/EN → IA → Obsidian → Telegram |
 
@@ -308,7 +313,7 @@ palavras_proibidas_descricao = [
 
 ## 📊 Outputs: Onde as Vagas Vão
 
-### Google Sheets (Score ≥ 70)
+### Google Sheets — aba "Candidatar" (Score ≥ 70)
 Planilha: **"CareerOps - Candidaturas"**
 | Coluna | Exemplo |
 |--------|---------|
@@ -322,9 +327,12 @@ Planilha: **"CareerOps - Candidaturas"**
 | Status | Pronto para Candidatar |
 | Ações | (manual) |
 
-### Telegram (Score < 70 + Digest)
-- **Alerta individual**: Vaga com score baixo + gaps principais
-- **Digest diário**: 1 msg consolidada (configurado para 21h BR)
+### Google Sheets — aba "Auditoria" (Score < 70)
+Mesma planilha, aba separada. **Toda** vaga avaliada é registrada aqui (não descartada) — serve para auditoria, aprendizado de padrões e evolução do filtro.
+
+### Telegram (Vagas Aprovadas + Digest)
+- **Vaga aprovada** (score ≥ 70): notificação individual com score + skills match/missing
+- **Digest diário** (workflow `careerops-digest`, separado): 1 msg consolidada (configurado para 21h BR)
 
 ---
 
