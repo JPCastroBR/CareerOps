@@ -42,6 +42,16 @@ def parse_args():
              "Sem esta flag, varre a lista global completa.",
     )
     parser.add_argument(
+        "--countries",
+        help="Lista de países separados por vírgula para UMA execução única "
+             "(ex: 'Brazil,Netherlands,Poland'). Filtra a lista completa do código.",
+    )
+    parser.add_argument(
+        "--all", "-a", action="store_true",
+        help="Roda TODOS os alvos da lista do código numa execução só "
+             "(equivalente a MODO GLOBAL, mas explícito).",
+    )
+    parser.add_argument(
         "--list", "-l", action="store_true",
         help="Apenas lista os alvos que SERIAM varridos e sai (sem rede).",
     )
@@ -55,11 +65,24 @@ def parse_args():
     )
     args = parser.parse_args()
 
+    # Resolução de país isolado (--country)
     if args.country:
         key = args.country.strip().lower()
         args.country_resolved = ALIASES.get(key, args.country)
     else:
         args.country_resolved = None
+
+    # Resolução de lista (--countries) -> lista de nomes canônicos
+    if args.countries:
+        args.countries_resolved = []
+        for c in args.countries.split(","):
+            c = c.strip()
+            if not c:
+                continue
+            args.countries_resolved.append(ALIASES.get(c.lower(), c))
+    else:
+        args.countries_resolved = None
+
     return args
 
 
@@ -126,9 +149,10 @@ def main():
     ]
 
     # ----------------------------------------------------------------------
-    # Filtro por país (quando --country foi passado)
+    # Filtro por país / países / all (modos de varredura)
     # ----------------------------------------------------------------------
     if args.country_resolved:
+        # Modo país isolado (--country)
         alvos = [a for a in alvos if a["pais"].lower() == args.country_resolved.lower()]
         if not alvos:
             validos = sorted({a["pais"] for a in alvos_ordem_completa()})
@@ -140,12 +164,28 @@ def main():
                 print(f"   - {nome}" + (f"  (alias: {', '.join(aliases_do)})" if aliases_do else ""))
             return
 
-    # Modo de execução
+    elif args.countries_resolved:
+        # Modo lista explícita (--countries "Brazil,Netherlands,...")
+        alvos = [a for a in alvos if a["pais"] in args.countries_resolved]
+        if not alvos:
+            validos = sorted({a["pais"] for a in alvos_ordem_completa()})
+            print(f"❌ Nenhum dos países '{args.countries}' encontrado na lista de alvos.")
+            print("Paises válidos (e aliases PT):")
+            for nome in validos:
+                aliases_do = [k for k, v in ALIASES.items() if v == nome]
+                print(f"   - {nome}" + (f"  (alias: {', '.join(aliases_do)})" if aliases_do else ""))
+            return
+
+    # Modo de execução (rótulo)
     if args.country_resolved:
         print(f"🌍 MODO PAÍS: varredura restrita a '{args.country_resolved}' "
               f"({len(alvos)} alvo(s)).")
+    elif args.countries_resolved:
+        print(f"🌍 MODO LISTA: varredura de {len(args.countries_resolved)} país(es) "
+              f"({len(alvos)} alvo(s)).")
     else:
         print(f"🌎 MODO GLOBAL: varredura completa ({len(alvos)} alvos).")
+
 
     # ----------------------------------------------------------------------
     # --list: apenas mostra o que seria varrido e sai (sem tocar na rede)

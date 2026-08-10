@@ -16,6 +16,57 @@ Automatiza a procura de emprego para perfis tech (SRE, DevOps, Cloud, Platform, 
 
 ---
 
+## 🔄 Pipeline Flow
+
+### Visão Geral (Mermaid)
+
+```mermaid
+flowchart TD
+    subgraph Sched["Cron Scheduler (Linux)"]
+        C1[Brazil 06/11/16/21h] --> C2[NL/DE/CA 08h]
+        C2 --> C3[IE/UK/PL/CH 09h]
+        C3 --> C4[Worldwide 23h]
+        C5["--all / --countries lista"]
+    end
+
+    subgraph CLI["Python CLI (main.py)"]
+        W[run_careerops.sh wrapper] --> P[JobSpy: LinkedIn+Indeed]
+        P --> F[Blocklist regex + Anti-dup]
+        F --> BR[BR: remote-only filter]
+        BR --> POST[POST n8n webhook]
+    end
+
+    subgraph N8N["n8n Workflows (Docker)"]
+        J[careerops-jobs] --> GR[Guard Rails]
+        GR --> IA[IA: OpenAI Score 0-100]
+        IA --> R{Score ≥ 70?}
+        D[careerops-digest] --> TG2[Telegram Daily]
+        CU[careerops-curriculo] --> OB[Obsidian PT/EN]
+    end
+
+    Sched --> CLI
+    CLI --> J
+    R -->|Sim| SH[Google Sheets: Candidatar]
+    R -->|Não| TG1[Telegram: Alerta Baixa]
+```
+
+### Diagrama Visual (Imagem)
+
+📊 **[docs/careerops-flow.html](docs/careerops-flow.html)** — abra no navegador para ver o fluxo completo colorido (collector → guard rails → IA → Sheets/Telegram).
+
+### Fases do Pipeline
+
+| Fase | Componente | Função |
+|------|-----------|--------|
+| **A: Coleta** | `main.py` + `jobspy.py` | Busca LinkedIn/Indeed, 200 vagas/país, query OR |
+| **B: Filtragem** | `filters.py` | Blocklist regex (título+descrição), anti-dup (`vagas_processadas.txt`), BR remoto-only |
+| **C: Envio** | `run_careerops.sh` | POST webhook n8n, rate-limit 2.5s, digest flag |
+| **D: Orquestração** | n8n (`careerops-jobs`) | Guard Rails → IA (OpenAI) → Score → Sheets/Telegram |
+| **E: Digest** | n8n (`careerops-digest`) | Consolida dia → 1 msg Telegram (21h BR) |
+| **F: Currículo** | n8n (`careerops-curriculo`) | Google Docs PT/EN → IA → Obsidian → Telegram |
+
+---
+
 ## 🚀 Quick Start
 
 ```bash
@@ -245,6 +296,8 @@ CareerOps/
 │   └── run_digest.sh         # Disparo manual digest
 ├── credentials/           # NÃO VERSIONAR (google-sa.json)
 ├── logs/                  # NÃO VERSIONAR
+├── docs/
+│   └── careerops-flow.html  # Diagrama visual do fluxo (abrir no navegador)
 ├── src/
 │   └── careerops/
 │       ├── main.py        # CLI entry (--country, --list, --digest)

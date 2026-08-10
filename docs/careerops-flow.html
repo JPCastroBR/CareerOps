@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CareerOps - Pipeline Flow</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    font-family: 'JetBrains Mono', monospace;
+    color: #e2e8f0;
+    padding: 40px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .header { text-align: center; margin-bottom: 30px; }
+  .header h1 {
+    font-size: 24px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .pulse { width: 10px; height: 10px; border-radius: 50%; background: #34d399;
+    box-shadow: 0 0 0 0 rgba(52,211,153,0.7); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(52,211,153,0); }
+    100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+  }
+  .header p { font-size: 12px; color: #94a3b8; margin-top: 8px; }
+  .diagram-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 1100px;
+    width: 100%;
+  }
+  svg { width: 100%; height: auto; display: block; }
+  .summary {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 16px; max-width: 1100px; width: 100%; margin-top: 24px;
+  }
+  .card {
+    background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 16px;
+  }
+  .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .card-dot.cyan { background: #22d3ee; }
+  .card-dot.emerald { background: #34d399; }
+  .card-dot.violet { background: #a78bfa; }
+  .card h3 { font-size: 13px; font-weight: 700; }
+  .card ul { list-style: none; margin-top: 8px; }
+  .card li { font-size: 10px; color: #94a3b8; margin: 4px 0; }
+  .footer { font-size: 9px; color: #475569; margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1><span class="pulse"></span> CareerOps — Job Hunting Automation Pipeline</h1>
+    <p>Python (JobSpy) → Guard Rails + IA → Google Sheets + Telegram | Cron multi-country scheduler</p>
+  </div>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 1060 560" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#94a3b8"/>
+        </marker>
+        <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#34d399"/>
+        </marker>
+        <marker id="arrow-amber" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#fbbf24"/>
+        </marker>
+      </defs>
+
+      <rect width="1060" height="560" fill="url(#grid)"/>
+
+      <!-- ===== CRON SCHEDULER (top) ===== -->
+      <text x="530" y="36" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="700">CRON SCHEDULER (Linux) — 12 jobs/day, resilient to shutdown</text>
+
+      <!-- Country cron chips -->
+      <g font-size="9" fill="#e2e8f0" text-anchor="middle">
+        <rect x="40"  y="48" width="120" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="100" y="65">Brazil 06/11/16/21</text>
+        <rect x="180" y="48" width="120" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="240" y="65">NL/DE/CA 08h</text>
+        <rect x="320" y="48" width="120" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="380" y="65">IE/UK/PL/CH 09h</text>
+        <rect x="460" y="48" width="120" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="520" y="65">Worldwide 23h</text>
+        <rect x="600" y="48" width="160" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="680" y="65">+ --all / --countries list</text>
+      </g>
+
+      <!-- Arrow down to wrapper -->
+      <line x1="530" y1="76" x2="530" y2="108" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- ===== WRAPPER ===== -->
+      <rect x="360" y="108" width="340" height="44" rx="6" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+      <rect x="360" y="108" width="340" height="44" rx="6" fill="rgba(8,51,68,0.4)"/>
+      <text x="530" y="128" fill="#e2e8f0" font-size="12" text-anchor="middle" font-weight="700">run_careerops.sh (wrapper)</text>
+      <text x="530" y="143" fill="#94a3b8" font-size="9" text-anchor="middle">idempotent • per-country logs • docker up</text>
+
+      <line x1="530" y1="152" x2="530" y2="184" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- ===== PYTHON COLLECTOR ===== -->
+      <rect x="300" y="184" width="460" height="120" rx="6" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+      <rect x="300" y="184" width="460" height="120" rx="6" fill="rgba(6,78,59,0.4)"/>
+      <text x="530" y="204" fill="#e2e8f0" font-size="12" text-anchor="middle" font-weight="700">Python Collector (main.py)</text>
+
+      <g font-size="9" fill="#94a3b8" text-anchor="middle">
+        <text x="420" y="226">JobSpy: LinkedIn + Indeed</text>
+        <text x="420" y="240">200 vagas/país • query OR filters</text>
+        <text x="640" y="226">Blocklist regex (title+desc)</text>
+        <text x="640" y="240">Anti-dup: vagas_processadas.txt</text>
+        <text x="640" y="254">BR: discard onsite/hybrid</text>
+      </g>
+
+      <!-- sub boxes -->
+      <rect x="320" y="262" width="200" height="30" rx="4" fill="#0f172a" stroke="#34d399"/>
+      <text x="420" y="281" fill="#e2e8f0" font-size="9" text-anchor="middle">collector/jobspy.py</text>
+      <rect x="540" y="262" width="200" height="30" rx="4" fill="#0f172a" stroke="#34d399"/>
+      <text x="640" y="281" fill="#e2e8f0" font-size="9" text-anchor="middle">filters.py + parser.py</text>
+
+      <!-- Arrow to n8n -->
+      <line x1="530" y1="304" x2="530" y2="336" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="545" y="324" fill="#94a3b8" font-size="8">POST /webhook/careerops-jobs</text>
+
+      <!-- ===== N8N ===== -->
+      <rect x="270" y="336" width="520" height="150" rx="6" fill="#0f172a" stroke="#fb923c" stroke-width="1.5"/>
+      <rect x="270" y="336" width="520" height="150" rx="6" fill="rgba(251,146,60,0.15)"/>
+      <text x="530" y="356" fill="#e2e8f0" font-size="12" text-anchor="middle" font-weight="700">n8n Workflows (localhost:5678, Docker)</text>
+
+      <rect x="290" y="368" width="160" height="34" rx="4" fill="#0f172a" stroke="#fb923c"/>
+      <text x="370" y="389" fill="#e2e8f0" font-size="9" text-anchor="middle">1. careerops-jobs</text>
+
+      <rect x="470" y="368" width="160" height="34" rx="4" fill="#0f172a" stroke="#fb923c"/>
+      <text x="550" y="389" fill="#e2e8f0" font-size="9" text-anchor="middle">2. careerops-digest</text>
+
+      <rect x="650" y="368" width="120" height="34" rx="4" fill="#0f172a" stroke="#fb923c"/>
+      <text x="710" y="389" fill="#e2e8f0" font-size="9" text-anchor="middle">3. curriculo</text>
+
+      <!-- Guard Rails + IA -->
+      <rect x="290" y="412" width="220" height="58" rx="4" fill="#0f172a" stroke="#fb7185"/>
+      <text x="400" y="430" fill="#fb7185" font-size="9" text-anchor="middle" font-weight="700">Guard Rails</text>
+      <text x="400" y="444" fill="#94a3b8" font-size="8" text-anchor="middle">blocklist • dup hash</text>
+      <text x="400" y="456" fill="#94a3b8" font-size="8" text-anchor="middle">salary • phishing • LGPD</text>
+
+      <rect x="530" y="412" width="240" height="58" rx="4" fill="#0f172a" stroke="#a78bfa"/>
+      <text x="650" y="430" fill="#a78bfa" font-size="9" text-anchor="middle" font-weight="700">IA Analysis (OpenAI)</text>
+      <text x="650" y="444" fill="#94a3b8" font-size="8" text-anchor="middle">curriculum + vacancy → score 0-100</text>
+      <text x="650" y="456" fill="#94a3b8" font-size="8" text-anchor="middle">matching / missing / red_flags</text>
+
+      <line x1="400" y1="470" x2="400" y2="492" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="650" y1="470" x2="650" y2="492" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- ===== OUTPUTS ===== -->
+      <rect x="270" y="492" width="260" height="50" rx="6" fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
+      <rect x="270" y="492" width="260" height="50" rx="6" fill="rgba(76,29,149,0.4)"/>
+      <text x="400" y="514" fill="#e2e8f0" font-size="11" text-anchor="middle" font-weight="700">Google Sheets</text>
+      <text x="400" y="530" fill="#94a3b8" font-size="9" text-anchor="middle">Score ≥ 70 → "Candidatar"</text>
+
+      <rect x="560" y="492" width="230" height="50" rx="6" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
+      <rect x="560" y="492" width="230" height="50" rx="6" fill="rgba(120,53,15,0.3)"/>
+      <text x="675" y="514" fill="#e2e8f0" font-size="11" text-anchor="middle" font-weight="700">Telegram</text>
+      <text x="675" y="530" fill="#94a3b8" font-size="9" text-anchor="middle">Score &lt; 70 + Daily Digest</text>
+
+      <!-- Legend -->
+      <g font-size="8" fill="#94a3b8">
+        <rect x="40" y="500" width="12" height="12" rx="2" fill="rgba(8,51,68,0.4)" stroke="#22d3ee"/>
+        <text x="58" y="510">Scheduler/CLI</text>
+        <rect x="40" y="518" width="12" height="12" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399"/>
+        <text x="58" y="528">Python</text>
+        <rect x="170" y="500" width="12" height="12" rx="2" fill="rgba(251,146,60,0.15)" stroke="#fb923c"/>
+        <text x="188" y="510">n8n</text>
+        <rect x="170" y="518" width="12" height="12" rx="2" fill="rgba(76,29,149,0.4)" stroke="#a78bfa"/>
+        <text x="188" y="528">Data/AI</text>
+        <rect x="290" y="500" width="12" height="12" rx="2" fill="rgba(120,53,15,0.3)" stroke="#fbbf24"/>
+        <text x="308" y="510">Notify</text>
+        <rect x="290" y="518" width="12" height="12" rx="2" fill="#0f172a" stroke="#fb7185"/>
+        <text x="308" y="528">Guard Rails</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="summary">
+    <div class="card">
+      <div class="card-header"><div class="card-dot cyan"></div><h3>Collection</h3></div>
+      <ul>
+        <li>• Cron: 12 jobs/day, multi-country</li>
+        <li>• CLI: --country, --countries, --all</li>
+        <li>• JobSpy: LinkedIn + Indeed</li>
+        <li>• 200 results/country, 48h window</li>
+        <li>• Idempotent + catch-up safe</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-dot emerald"></div><h3>Filtering &amp; IA</h3></div>
+      <ul>
+        <li>• Blocklist regex (title+desc)</li>
+        <li>• Anti-duplicate: vagas_processadas.txt</li>
+        <li>• BR: remote-only enforcement</li>
+        <li>• Guard Rails: salary, phishing, LGPD</li>
+        <li>• OpenAI scores 0-100 vs curriculum</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-dot violet"></div><h3>Outputs</h3></div>
+      <ul>
+        <li>• Sheets: score ≥ 70 → candidatar</li>
+        <li>• Telegram: score &lt; 70 alerts</li>
+        <li>• Daily digest (21h BR)</li>
+        <li>• Per-country dated logs</li>
+        <li>• Curriculum PT/EN auto-gen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">CareerOps Pipeline — Generated diagram • Open in browser to view</div>
+</body>
+</html>
