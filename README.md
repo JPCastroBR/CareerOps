@@ -1,138 +1,360 @@
-📄 PROJETO: CareerOps - Job Hunting Automation Pipeline
+# CareerOps — Job Hunting Automation Pipeline
 
-1. Visão Geral e Objetivo
-O CareerOps é um pipeline automatizado de engenharia de dados e recrutamento focado em buscar, filtrar, avaliar e registrar oportunidades de emprego para o perfil de Engenheiro de Infraestrutura / SRE Sênior (CareerOps).
+> **Pipeline automatizado de busca, filtragem, análise com IA e registro de vagas.**
+> Configure seus critérios, rode localmente e receba apenas oportunidades relevantes no Google Sheets + Telegram.
 
-O foco do perfil técnico inclui Cloud (AWS, OCI), Observabilidade (Grafana, Zabbix), IaC/Automação (Terraform, Ansible, PowerShell) e Containers (Docker, Kubernetes). O objetivo do sistema é garimpar vagas de trabalho remoto no Brasil e vagas com suporte à realocação/visto em países europeus estratégicos de alto custo-benefício.
+---
 
-2. Stack Tecnológico
-- **Linguagem & Ambiente**: Python 3.12 gerenciado via uv
-- **Web Scraping**: Biblioteca JobSpy (focada em LinkedIn e Indeed)
-- **Orquestração**: n8n rodando localmente via Docker (Container: careerops-n8n)
-- **Inteligência Artificial**: Integração do n8n com a API da OpenAI (GPT) via nó Basic LLM Chain
-- **Banco de Dados/Output**: Google Sheets via API (Service Account)
-- **Agendamento**: Cron do Linux (via `install_cron_jobs.sh`) — NÃO usa horários fixos rígidos; o wrapper `run_careerops.sh` é idempotente e seguro para execução "catch-up" se o computador estava desligado no horário agendado
-- **Logs**: Arquivos por país/data em `logs/careerops-<pais>-YYYYMMDD.log`
+## 🎯 Para que serve
 
-3. Fluxo de Execução (Pipeline)
+Automatiza a procura de emprego para perfis tech (SRE, DevOps, Cloud, Platform, Infra):
+- **Busca** em LinkedIn + Indeed via JobSpy
+- **Filtra** localmente (blocklist, anti-duplicidade, modalidade)
+- **Analisa** com IA (OpenAI/OpenRouter) comparando vaga vs seu currículo
+- **Roteia**: Score alto → Google Sheets (candidatar) | Score baixo → Telegram (revisar)
+- **Agenda**: Cron multi-país/horário, resiliente a desligamento (catch-up manual)
 
-Fase A: Coleta (Python - main.py)
-- Query Otimizada: Busca por '"Site Reliability Engineer" OR "SRE" OR "Infrastructure Engineer" OR "Cloud Infrastructure" OR "DevOps"'
-- Alvos Estratégicos (configuráveis via `--country`):
-  - Brasil (Apenas Remoto) — 4x/dia: 06h, 11h, 16h, 21h
-  - Países Europeus (Remoto + Presencial/Híbrido) — 1x/dia pela manhã (horário local Europa):
-    - Holanda (08h), Alemanha (08h), Irlanda (09h), Reino Unido (09h), Polônia (09h), Suíça (09h)
-  - América do Norte — 1x/dia manhã:
-    - Canadá (08h)
-  - Worldwide (Global B2B/PJ) — 1x/dia noite (23h)
-- Plataformas: LinkedIn e Indeed (parâmetro `country_indeed` configurado)
-- Filtro Brasil: Apenas vagas remoto (descarta presencial/híbrido via regex)
+---
 
-Fase B: Filtragem Local e Anti-Duplicidade (Python)
-- Blocklist Baseada em Regex (títulos + descrições): Remove desenvolvedores puros, IA/Dados, Suporte N1, ERPs, vagas exigindo idiomas fluentes (alemão, francês, holandês, nórdicos), vistos não patrocinados, clearances militares, estágios
-- Memória de Estado: `vagas_processadas.txt` — descarta URLs já processadas
+## 🚀 Quick Start
 
-Fase C: Orquestração e Envio (Python → n8n)
-- Webhook: POST para `http://n8n:5678/webhook/careerops-jobs` com payload completo da vaga
-- Rate Limiting: Sleep 2.5s entre envios (protege Google Sheets contra HTTP 429)
-- Digest Diário: Disparado APENAS na última execução do Brasil (21h) via `http://n8n:5678/webhook/careerops-digest` — evita spam de múltiplos resumos/dia
-
-Fase D: n8n Workflows (Orquestração Pós-Coleta)
-1. `careerops-jobs` — Recebe vagas, aplica Guard Rails, chama IA (OpenAI), roteia por score
-2. `careerops-digest` — Consolida vagas do dia, envia resumo único via Telegram
-3. `careerops-curriculo` — Pipeline de geração de currículo ATS PT/EN (Google Docs → IA → Obsidian → Telegram)
-
-4. Estrutura do Projeto
-CareerOps
-├── README.md
-├── docker-compose.yml
-├── pyproject.toml
-├── uv.lock
-├── vagas_processadas.txt          # Memória de estado (NÃO versionar)
-├── .env                           # Segredos (NÃO versionar)
-├── credentials/
-│   └── carrerops-502122-b51206f3c366.json   # Google Service Account (NÃO versionar)
-├── scripts/
-│   ├── install_cron_jobs.sh       # Gerenciador de cron jobs multi-país
-│   ├── run_careerops.sh           # Wrapper por país (log por país/data)
-│   └── run_digest.sh              # Disparo manual do digest
-├── logs/                          # Logs de execução (NÃO versionar)
-└── src/
-    └── careerops/
-        ├── __init__.py
-        ├── collector/
-        │   ├── __init__.py
-        │   └── jobspy.py
-        └── main.py                # Entry point CLI (--country, --list, --digest)
-
-5. Chaves/APIs Necessárias e Onde Estão
-
-| Serviço | Credencial | Local | Observação |
-|---------|------------|-------|------------|
-| **OpenAI / OpenRouter** | `OPENAI_API_KEY` ou `OPENROUTER_API_KEY` | n8n Credentials (id: `zXajfEyPnxUoFzej`) | Usado no nó Basic LLM Chain para análise de vaga + currículo |
-| **Google Sheets / Docs** | Service Account JSON (`carrerops-502122-b51206f3c366.json`) | `credentials/` + n8n Credential (id: `87M1CpQdV64Rdg4z`) | Service account `n8n-bot@carrerops-502122.iam.gserviceaccount.com` — NÃO expira |
-| **Google OAuth2 (fallback)** | Refresh/Access Token | `~/.hermes/.env` ou n8n | Expira — preferir Service Account |
-| **Telegram Bot** | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | `~/.hermes/.env` + n8n Credentials | Chat ID: `8866154869` |
-| **n8n API** | `N8N_API_KEY` | `~/.hermes/.env` | Para gestão remota de workflows |
-| **LinkedIn/Indeed (JobSpy)** | Cookies/Headers | Variáveis de ambiente no container `careerops-collector` | JobSpy usa sessão de navegador; cookies podem expirar |
-
-⚠️ **Segurança**: `.env`, `credentials/*.json`, `vagas_processadas.txt`, `logs/` estão no `.gitignore` — NUNCA commitá-los.
-
-6. Agendamento Automático (Cron) — Design "Resiliente a Desligamento"
-
-O sistema NÃO assume que o computador está sempre ligado. O agendamento é feito via cron tradicional (horários fixos), mas:
-
-- **Wrapper idempotente**: `run_careerops.sh` pode ser executado a qualquer momento — se o computador estava desligado às 06h, ao ligar às 10h você roda manualmente `./run_careerops.sh Brazil` e ele processa normalmente
-- **Memória de estado**: `vagas_processadas.txt` garante que não há duplicatas mesmo se rodar múltiplas vezes
-- **Digest único**: Apenas a última execução do Brasil (21h) dispara o digest — se você rodar manualmente às 10h, ele NÃO dispara digest (flag `--digest` controla isso)
-- **Logs por país/data**: Cada execução cria `logs/careerops-<pais>-YYYYMMDD.log` — rastreabilidade total
-
-**Comandos de gerenciamento:**
 ```bash
-# Instalar/atualizar cron jobs (edite SCHEDULES no script antes)
-/home/castro/Projects/CareerOps/scripts/install_cron_jobs.sh install
+# 1. Clone
+git clone git@github.com:SEU_USUARIO/CareerOps.git
+cd CareerOps
 
-# Listar jobs ativos
-/home/castro/Projects/CareerOps/scripts/install_cron_jobs.sh list
+# 2. Configure credenciais (copie e edite)
+cp .env.example .env
+# Edite .env com suas chaves: OPENAI_API_KEY, TELEGRAM_BOT_TOKEN, etc.
 
-# Remover todos os jobs CareerOps
-/home/castro/Projects/CareerOps/scripts/install_cron_jobs.sh remove
+# 3. Google Service Account
+# Coloque o JSON em credentials/google-sa.json (não versionado)
 
-# Testar país específico
-/home/castro/Projects/CareerOps/scripts/install_cron_jobs.sh test Brazil
+# 4. Suba o stack
+docker compose up -d
+
+# 5. Teste uma busca
+docker exec careerops-collector uv run src/careerops/main.py --country Brazil --list
+
+# 6. Instale agendamento automático (opcional)
+./scripts/install_cron_jobs.sh install
 ```
 
-**Schedule atual (12 jobs/dia):**
-| País | Cron | Digest |
-|------|------|--------|
-| Brazil | 0 6,11,16,21 * * * | 21h apenas |
-| Netherlands | 0 8 * * * | — |
-| Germany | 0 8 * * * | — |
-| Ireland | 0 9 * * * | — |
-| United Kingdom | 0 9 * * * | — |
-| Poland | 0 9 * * * | — |
-| Switzerland | 0 9 * * * | — |
-| Canada | 0 8 * * * | — |
-| Worldwide | 0 23 * * * | — |
+---
 
-7. Uso Manual (CLI)
+## ⚙️ Configuração Essencial
+
+### 1. Variáveis de Ambiente (`.env`)
+
 ```bash
-# Via wrapper (sobe stack Docker + loga)
-/home/castro/Projects/CareerOps/scripts/run_careerops.sh Brazil
-/home/castro/Projects/CareerOps/scripts/run_careerops.sh "United Kingdom" digest
+# IA (OpenAI ou OpenRouter)
+OPENAI_API_KEY=sk-...
+# ou
+OPENROUTER_API_KEY=sk-or-...
 
-# Direto no container (mais rápido, stack já up)
+# Telegram (bot + chat onde recebe alertas/digest)
+TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_CHAT_ID=123456789
+
+# n8n (para gestão remota de workflows)
+N8N_API_KEY=eyJhbGciOi...
+```
+
+> **Nunca commite `.env`** — está no `.gitignore`.
+
+### 2. Google Service Account
+
+1. Crie Service Account no GCP
+2. Dê permissão `Editor` no Sheets/Docs alvo
+3. Salve JSON em `credentials/google-sa.json`
+4. No n8n: Credentials → Google API → Service Account → cole o JSON
+
+### 3. Seu Currículo (para IA comparar)
+
+O n8n lê dois Google Docs (PT + EN). Configure os IDs no workflow `careerops-curriculo`:
+- Doc PT: `1ABC...` (seu currículo em português)
+- Doc EN: `1XYZ...` (versão English ATS)
+
+---
+
+## 🌍 Personalizando Localidades (Países/Regiões)
+
+### Opção A: Via CLI (execução única)
+```bash
+# Qualquer país suportado pelo JobSpy
 docker exec careerops-collector uv run src/careerops/main.py --country Brazil
-docker exec careerops-collector uv run src/careerops/main.py --country "United Kingdom" --digest
-
-# Listar alvos sem buscar (dry-run)
-docker exec careerops-collector uv run src/careerops/main.py --country Germany --list
+docker exec careerops-collector uv run src/careerops/main.py --country "United States"
+docker exec careerops-collector uv run src/careerops/main.py --country Germany --digest
 ```
 
-8. Próximos Passos do Projeto
-- Manter sintonia fina da Blocklist em `main.py` conforme o mercado muda
-- Feedback loop: marcar no Sheets "Entrevista Agendada" → re-treinar prompt IA
-- Auto-apply para scores > 85 (Playwright)
-- Enriquecimento empresa: Glassdoor rating, size, funding (Crunchbase API)
-- Dashboard Grafana: funil completo (coletas → guard rails → IA → sheets → entrevistas → ofertas)
-- Pipeline de currículo 100% Hermes/Python (remover dependência n8n para escrita no Obsidian)
+**Aliases PT suportados**: `brasil`, `holanda`, `alemanha`, `reino unido`/`uk`/`inglaterra`, `irlanda`, `polonia`, `suica`, `dinamarca`, `noruega`, `suecia`, `austria`, `finlandia`, `franca`, `canada`, `mundo`/`global`.
+
+### Opção B: Adicionar/Remover Países no Agendamento Automático
+
+Edite `scripts/install_cron_jobs.sh` → array `SCHEDULES`:
+
+```bash
+readonly SCHEDULES=(
+    # Brasil - 4x/dia (remoto only)
+    "0 6 * * * Brazil"
+    "0 11 * * * Brazil"
+    "0 16 * * * Brazil"
+    "0 21 * * * Brazil digest"
+
+    # Europa manhã (horário servidor ≈ manhã Europa)
+    "0 8 * * * Netherlands"
+    "0 8 * * * Germany"
+    "0 9 * * * Ireland"
+    "0 9 * * * United Kingdom"
+    "0 9 * * * Poland"
+    "0 9 * * * Switzerland"
+
+    # América do Norte
+    "0 8 * * * Canada"
+
+    # Global
+    "0 23 * * * worldwide"
+)
+```
+
+**Formato**: `"min hora dia mês semana País [digest]"`
+- `digest` = dispara resumo Telegram ao final (use apenas 1x/dia)
+- País = nome canônico JobSpy ou alias PT
+
+Depois reinstale:
+```bash
+./scripts/install_cron_jobs.sh install
+```
+
+### Opção C: Modo Remoto vs Presencial
+
+No `src/careerops/main.py`, lista `alvos` define país + `remoto: true/false`:
+
+```python
+alvos = [
+    {"pais": "Brazil", "remoto": True},      # só remoto
+    {"pais": "Germany", "remoto": False},    # presencial
+    {"pais": "Germany", "remoto": True},     # remoto
+]
+```
+
+- **Brasil**: hardcoded para descartar presencial/híbrido via regex
+- **Outros**: ambos os modos incluídos por padrão
+
+---
+
+## 💼 Personalizando Tipo de Vaga (Query de Busca)
+
+### Query Principal (em `main.py`)
+
+```python
+query = '"Site Reliability Engineer" OR "SRE" OR "Infrastructure Engineer" OR "Cloud Infrastructure" OR "DevOps"'
+```
+
+**Para alterar**: edite a variável `query` no topo do `main()`.
+
+**Exemplos de perfis:**
+
+| Perfil | Query Sugerida |
+|--------|----------------|
+| **Backend/Go** | `'"Golang" OR "Go Developer" OR "Backend Engineer" OR "API Developer"'` |
+| **Data Engineer** | `'"Data Engineer" OR "Data Platform" OR "ETL" OR "Airflow" OR "dbt"'` |
+| **Kubernetes/Platform** | `'"Platform Engineer" OR "Kubernetes" OR "K8s" OR "DevOps Platform"'` |
+| **Cloud Architect** | `'"Cloud Architect" OR "Solutions Architect" OR "AWS Architect"'` |
+| **Full Stack** | `'"Full Stack" OR "Fullstack" OR "React" AND "Node"'` |
+
+### Resultados por País (parâmetro `results_wanted`)
+
+```python
+jobs_df = fetch_recent_jobs(
+    search_term=query,
+    location=alvo['pais'],
+    is_remote=alvo['remoto'],
+    results_wanted=200  # ajuste aqui (max ~1000)
+)
+```
+
+---
+
+## 🛡 Personalizando Filtros (Blocklist)
+
+### Títulos (remove cargos fora do escopo)
+```python
+# src/careerops/main.py → palavras_proibidas_titulo
+palavras_proibidas_titulo = [
+    "estágio", "junior", "jr", "pleno", "mid-level",
+    "qa", "tester", "test automation", "quality engineer",
+    "suporte", "service desk", "support", "helpdesk",
+    "backend", "frontend", "fullstack", "software engineer",
+    "data scientist", "mlops", "ai engineer",
+    "sap", "sales", "manager", "director",
+    # adicione seus termos
+]
+```
+
+### Descrições (barreiras: visto, idioma, clearance)
+```python
+palavras_proibidas_descricao = [
+    "no visa sponsorship", "must have right to work",
+    "fluent in german", "b2 deutsch", "c1 deutsch",
+    "fluent in french", "courant français",
+    "fluent in dutch", "vloeiend nederlands",
+    "security clearance", "clearance",
+    "werkstudent", "alternance", "internship",
+    # adicione seus termos
+]
+```
+
+> **Dica**: Mantenha listas em arquivo separado (`config/blocklist.yaml`) e carregue no `main.py` para versionar mudanças.
+
+---
+
+## 📊 Outputs: Onde as Vagas Vão
+
+### Google Sheets (Score ≥ 70)
+Planilha: **"CareerOps - Candidaturas"**
+| Coluna | Exemplo |
+|--------|---------|
+| Data/Hora | 2026-08-08 14:30 |
+| Empresa | Nubank |
+| Vaga | Senior SRE |
+| Link | linkedin.com/jobs/123 |
+| Score | 87 |
+| Skills Match | AWS, Terraform, K8s |
+| Missing | GCP, ArgoCD |
+| Status | Pronto para Candidatar |
+| Ações | (manual) |
+
+### Telegram (Score < 70 + Digest)
+- **Alerta individual**: Vaga com score baixo + gaps principais
+- **Digest diário**: 1 msg consolidada (configurado para 21h BR)
+
+---
+
+## 🔧 Estrutura do Projeto
+
+```
+CareerOps/
+├── .env.example           # Template de variáveis
+├── .gitignore
+├── docker-compose.yml     # n8n + collector
+├── pyproject.toml         # Deps Python (uv)
+├── scripts/
+│   ├── install_cron_jobs.sh  # Gerenciador cron (EDITAR SCHEDULES)
+│   ├── run_careerops.sh      # Wrapper por país (log por país/data)
+│   └── run_digest.sh         # Disparo manual digest
+├── credentials/           # NÃO VERSIONAR (google-sa.json)
+├── logs/                  # NÃO VERSIONAR
+├── src/
+│   └── careerops/
+│       ├── main.py        # CLI entry (--country, --list, --digest)
+│       └── collector/
+│           ├── jobspy.py      # Wrapper JobSpy
+│           ├── filters.py     # Blocklist + anti-dup
+│           └── parser.py      # Normalização payload
+└── README.md
+```
+
+---
+
+## 🐳 Docker Compose (Serviços)
+
+```yaml
+# docker-compose.yml
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    ports: ["5678:5678"]
+    volumes: ["./n8n-data:/home/node/.n8n"]
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+
+  collector:
+    build: .
+    command: tail -f /dev/null  # container vivo para exec
+    volumes: [".:/app"]
+    environment:
+      - LINKEDIN_COOKIES=${LINKEDIN_COOKIES}
+```
+
+---
+
+## 📅 Agendamento: Design Resiliente
+
+| Problema | Solução |
+|----------|---------|
+| Computador desligado no horário | Wrapper idempotente → rode manualmente quando ligar |
+| Execução duplicada | `vagas_processadas.txt` evita duplicatas |
+| Múltiplos digests/dia | Flag `--digest` apenas na última execução BR |
+| Rastreabilidade | Logs por país/data: `logs/careerops-brazil-20260808.log` |
+
+**Comandos de cron:**
+```bash
+./scripts/install_cron_jobs.sh install   # instala/atualiza
+./scripts/install_cron_jobs.sh list      # mostra ativos
+./scripts/install_cron_jobs.sh remove    # remove todos
+./scripts/install_cron_jobs.sh test BR   # testa país
+```
+
+---
+
+## 🔐 Segurança (Obrigatório)
+
+| Arquivo | No .gitignore? | Ação |
+|---------|----------------|------|
+| `.env` | ✅ | Nunca commite |
+| `credentials/*.json` | ✅ | Nunca commite |
+| `vagas_processadas.txt` | ✅ | Estado local |
+| `logs/` | ✅ | Apenas local |
+| `.venv/`, `uv.lock` | ✅ | Local only |
+
+---
+
+## 🛠 Desenvolvimento
+
+```bash
+# Instalar deps
+uv sync
+
+# Rodar testes
+uv run pytest
+
+# Lint
+uv run ruff check src/
+uv run mypy src/
+
+# Build container
+docker compose build collector
+```
+
+---
+
+## 📝 Checklist para Novo Usuário
+
+- [ ] Clone repo
+- [ ] Copie `.env.example` → `.env` e preencha chaves
+- [ ] Crie Google Service Account → `credentials/google-sa.json`
+- [ ] Configure n8n com credenciais Google + OpenAI + Telegram
+- [ ] Importe workflows n8n (JSONs em `n8n-workflows/`)
+- [ ] Edite `src/careerops/main.py`: `query` + `alvos` + `blocklist`
+- [ ] Edite `scripts/install_cron_jobs.sh`: `SCHEDULES` para seus países/horários
+- [ ] `docker compose up -d`
+- [ ] Teste: `docker exec careerops-collector uv run src/careerops/main.py --country Brazil --list`
+- [ ] `./scripts/install_cron_jobs.sh install`
+
+---
+
+## 🤝 Contribuindo
+
+1. Fork → branch `feature/xyz`
+2. Adicione testes para novos filtros/países
+3. `uv run pytest` + `uv run ruff check`
+4. PR com descrição do que muda e por quê
+
+---
+
+## 📄 Licença
+
+MIT — Use, adapte, compartilhe.
