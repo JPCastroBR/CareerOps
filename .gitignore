@@ -1,0 +1,39 @@
+# Ambiente virtual
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Variáveis de ambiente
+.env
+
+# Banco de dados
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# Estado local (memória de vagas processadas)
+vagas_processadas.txt
+
+# Credenciais sensíveis
+credentials/
+*.json
+
+# VS Code
+.vscode/
+
+# Testes
+.pytest_cache/
+.coverage
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+tests/ 

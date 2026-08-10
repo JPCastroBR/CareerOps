@@ -1,0 +1,48 @@
+services:
+  # O Cérebro do Fluxo: n8n (Orquestração e IA)
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: careerops-n8n
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - TZ=America/Sao_Paulo
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /home/castro/Obsidian:/home/node/obsidian:rw
+    networks:
+      - rede_isolada
+
+  # O Coletor: Python 3.12 + uv
+  app:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: careerops-collector
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - TZ=America/Sao_Paulo
+      - UV_PROJECT_ENVIRONMENT=/app/.venv
+      - PYTHONPATH=/app/src  # <-- Adicione esta linha!
+    command: tail -f /dev/null
+    depends_on:
+      - n8n
+    networks:
+      - rede_isolada
+
+volumes:
+  n8n_data:
+
+networks:
+  rede_isolada:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.10.0/24
