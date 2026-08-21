@@ -2,13 +2,13 @@
 
 > **Visão**: Pipeline de automação de busca de emprego (SRE/DevOps/Cloud) que coleta → filtra → analisa com IA → registra em Google Sheets + Telegram, com agendamento multi-horário resiliente a desligamento.
 > **Repositório**: https://github.com/JPCastroBR/CareerOps (privado)
-> **Atualizado**: 2026-08-10
+> **Atualizado**: 2026-08-19
 
 ---
 
-## 📍 Status Atual: Fase 2 — Configuração Externa & Multi-país (CONCLUÍDA)
+## 📍 Status Atual: Fase 6 — Portais de Carreira de Bancos BR (CONCLUÍDA)
 
-O projeto saiu de um script monolítico hardcoded para uma arquitetura limpa onde **configuração vive fora do código** (`config.json` gitignored) e o agendamento é genérico.
+O pipeline passou a varrer **portais próprios de bancos brasileiros** além do LinkedIn/Indeed: **Gupy** (Itaú, Sicredi, BMG) via `__NEXT_DATA__` e **Workday** (Santander) via API pública `cxs/jobs` + JSON-LD. As vagas entram no mesmo fluxo do JobSpy (blocklist → anti-dup → Brasil remoto-only → n8n).
 
 ---
 
@@ -52,6 +52,14 @@ O projeto saiu de um script monolítico hardcoded para uma arquitetura limpa ond
 - [x] Cron reinstalada (7 jobs por horário, digest no último) — zero país hardcoded
 - [x] README: Opção B + Design Resiliente atualizados para padrão config-driven
 
+### Fase 6 — Portais de Carreira de Bancos BR (Gupy + Workday)
+- [x] `src/careerops/collector/banks.py` — adapter **Gupy** (Itaú/Sicredi/BMG) via `__NEXT_DATA__` SSR
+- [x] Adapter **Workday** (Santander) — search `cxs/jobs` `limit=20` + detalhe via JSON-LD; `httpx[http2]`
+- [x] Rate gate (≤8 req/60s) + backoff 60s + stop-on-throttle (Workday rejeita `limit≥22` e rajadas com HTTP 400)
+- [x] `config.json`: campo `banks[]` com `source` + `workday.{tenant,site}`; `--source banks|all`
+- [x] Vagas de bancos fluem pelo mesmo blocklist / anti-dup / `brazil_remote_only` do JobSpy
+- [x] README: seção banks Workday + pecularidade do `limit`
+
 ---
 
 ## 🔧 Arquitetura Atual
@@ -59,8 +67,8 @@ O projeto saiu de um script monolítico hardcoded para uma arquitetura limpa ond
 ```
 cron (horários) 
    └─> run_careerops.sh (wrapper)
-         ├─ lê config.json  ──────> países + work_mode + query + blocklist
-         └─> main.py (JobSpy → filtros → n8n webhook)
+         ├─ lê config.json  ──────> países + work_mode + query + blocklist + bancos
+         └─> main.py (JobSpy + portais bancos Gupy/Workday → filtros → n8n webhook)
                └─> n8n (Guard Rails → IA OpenAI → Sheets/Telegram)
 ```
 
@@ -70,25 +78,25 @@ cron (horários)
 
 ## 🚀 Roadmap Futuro
 
-### Fase 6 — Robustez & Observabilidade
+### Fase 7 — Robustez & Observabilidade
 - [ ] **Testes automatizados** (`pytest`): parsing de config, mapeamento work_mode, filtros
 - [ ] **Validação de schema** do `config.json` (jsonschema) com mensagens de erro claras
 - [ ] **Metrics endpoint**: vagas/dia, taxa guard rails, distribuição de scores → Prometheus/Grafana
 - [ ] **Alertas de watchdog**: cron parado > 4h dispara notificação
 
-### Fase 7 — Enriquecimento & Inteligência
+### Fase 8 — Enriquecimento & Inteligência
 - [ ] **Auto-apply** para scores > 85 (Playwright/Greenhouse/Lever)
 - [ ] **Feedback loop**: Sheets "Entrevista Agendada" → re-treinar prompt IA
 - [ ] **Enriquecimento de empresa**: Glassdoor rating, size, funding (Crunchbase API)
 - [ ] **Multi-currículo**: matcher de currículo por país/idioma (PT/EN/DE)
 
-### Fase 8 — Deploy & Distribuição
+### Fase 9 — Deploy & Distribuição
 - [ ] **Docker image do collector** publicada (em vez de `uv run` no container)
 - [ ] **Helm chart / docker-compose prod** com healthchecks
 - [ ] **Setup wizard**: `careerops init` que gera `config.json` + `.env` interativamente
 - [ ] **CI**: lint + test em PR (GitHub Actions)
 
-### Fase 9 — UX & Extensibilidade
+### Fase 10 — UX & Extensibilidade
 - [ ] **Plugin de blocklist**: arquivos YAML separados por categoria (vistos, idiomas, níveis)
 - [ ] **Suporte a mais fontes**: Greenhouse, Lever, Hacker News, Wellfound
 - [ ] **Dashboard web** (Streamlit) para revisar scores < 70 sem abrir Telegram
@@ -105,7 +113,8 @@ cron (horários)
 ---
 
 ## 🗒 Notas de Implementação
-- **Commits**: 5 no total (`b8d7ec7` → `8d167b0`)
-- **Arquivos versionados**: 20 (sem `.env`, `credentials/`, `vagas_processadas.txt`, `logs/`, `config.json`)
-- **Stack**: Python 3.12 (uv), JobSpy, n8n (Docker), OpenAI/OpenRouter, Google Sheets, Telegram, Cron
+- **Commits**: Fase 0-5 (`b8d7ec7` → `8d167b0`) + Fase 6 (Gupy/Workday, atual)
+- **Arquivos versionados**: ~21 (sem `.env`, `credentials/`, `vagas_processadas.txt`, `logs/`, `config.json`)
+- **Stack**: Python 3.12 (uv), JobSpy, httpx[http2], n8n (Docker), OpenAI/OpenRouter, Google Sheets, Telegram, Cron
+- **Fontes de vagas**: LinkedIn + Indeed (JobSpy), Gupy (Itaú/Sicredi/BMG), Workday (Santander)
 - **Padrão de branch**: `master` direto (repo pessoal/privado)

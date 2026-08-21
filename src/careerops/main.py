@@ -1,10 +1,12 @@
 import os
 import time
 import json
+import re
 import argparse
 import pandas as pd
 import requests
 from careerops.collector.jobspy import fetch_recent_jobs
+from careerops.collector.banks import fetch_bank_jobs
 
 ARQUIVO_MEMORIA = "vagas_processadas.txt"
 ARQUIVO_CONFIG = "config.json"
@@ -40,6 +42,10 @@ DEFAULT_CONFIG = {
     "targets": [{"country": "worldwide", "work_mode": "remote"}],
     "title_blocklist": [],
     "brazil_remote_only": True,
+    # Portais de carreira de bancos brasileiros (fonte Gupy e/ou Workday).
+    "banks": [],
+    "bank_results_per_bank": 50,
+    "bank_include_keywords": [],
 }
 
 
@@ -91,6 +97,19 @@ def parse_args():
     parser.add_argument(
         "--no-digest", dest="digest", action="store_false",
         help="NAO dispara o digest ao terminar.",
+    )
+    parser.add_argument(
+        "--source",
+        choices=["jobspy", "banks", "all"],
+        default="all",
+        help="Fonte de vagas: 'jobspy' (LinkedIn+Indeed, padrão antigo), "
+             "'banks' (portais de bancos BR via Gupy) ou 'all' (ambos). "
+             "Padrão: all.",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Coleta + filtra e mostra o resultado SEM enviar nada ao n8n "
+             "(não grava memória, não dispara digest).",
     )
     args = parser.parse_args()
 
@@ -154,6 +173,19 @@ def main():
 
     brazil_remote_only = cfg.get("brazil_remote_only", True)
     title_blocklist_cfg = cfg.get("title_blocklist", [])
+    banks_cfg = cfg.get("banks", DEFAULT_CONFIG["banks"]) or []
+    bank_results = cfg.get("bank_results_per_bank", DEFAULT_CONFIG["bank_results_per_bank"])
+    bank_include = cfg.get("bank_include_keywords", DEFAULT_CONFIG["bank_include_keywords"]) or []
+
+    # Bancos são brasileiros: só fazem sentido numa varredura Brasil/global.
+    eh_brasil = (
+        (args.country_resolved and args.country_resolved.lower() == "brazil")
+        or (args.countries_resolved and any(c.lower() == "brazil" for c in args.countries_resolved))
+        or (not args.country_resolved and not args.countries_resolved)
+    )
+    source = args.source
+    run_jobspy = source in ("jobspy", "all")
+    run_banks = source in ("banks", "all") and bool(banks_cfg) and eh_brasil
 
     # ----------------------------------------------------------------------
     # Filtro por país / países / all (modos de varredura)
@@ -201,6 +233,11 @@ def main():
         print("\nAlvos que seriam varridos:")
         for a in alvos:
             print(f"   - {a['pais']} | remoto={a['remoto']}")
+        print(f"\nFontes: {source}")
+        if run_banks:
+            print("Bancos (Gupy/Workday):")
+            for b in banks_cfg:
+                print(f"   - {b.get('name', b.get('subdomain'))} ({b.get('subdomain')})")
         return
 
     # Decisão do digest: country run => off por padrão (evita spam);
@@ -211,18 +248,35 @@ def main():
     todas_vagas = []
 
     # 1. Coleta os dados de todos os países, Busca N vagas por país (do config)
-    for alvo in alvos:
+    if run_jobspy:
+        for alvo in alvos:
+            try:
+                jobs_df = fetch_recent_jobs(
+                    search_term=query,
+                    location=alvo['pais'],
+                    is_remote=alvo['remoto'],
+                    results_wanted=results_per_country
+                )
+                if not jobs_df.empty:
+                    todas_vagas.append(jobs_df)
+            except Exception as e:
+                print(f"❌ Erro ao buscar no(a) {alvo['pais']}: {e}")
+
+    # 1b. Portais de carreira dos bancos brasileiros (Gupy + Workday).
+    #     Já saem filtrados por título relevante + remoto (regra Brasil).
+    if run_banks:
+        print(f"\n🏦 Varrendo portais de {len(banks_cfg)} banco(s) brasileiro(s)...")
         try:
-            jobs_df = fetch_recent_jobs(
-                search_term=query,
-                location=alvo['pais'],
-                is_remote=alvo['remoto'],
-                results_wanted=results_per_country
+            banks_df = fetch_bank_jobs(
+                banks=banks_cfg,
+                include_keywords=bank_include,
+                results_wanted=bank_results,
+                remote_only_br=brazil_remote_only,
             )
-            if not jobs_df.empty:
-                todas_vagas.append(jobs_df)
+            if not banks_df.empty:
+                todas_vagas.append(banks_df)
         except Exception as e:
-            print(f"❌ Erro ao buscar no(a) {alvo['pais']}: {e}")
+            print(f"❌ Erro na varredura de bancos: {e}")
 
     if not todas_vagas:
         print("📭 Nenhuma vaga encontrada na varredura de hoje.")
@@ -304,11 +358,11 @@ def main():
     ]
 
     # Aplica o filtro pesado apenas nos títulos
-    padrao_titulo = '|'.join(palavras_proibidas_titulo)
+    padrao_titulo = '|'.join(re.escape(p) for p in palavras_proibidas_titulo)
     df_final = df_final[~df_final['title'].str.contains(padrao_titulo, case=False, na=False)]
 
     # Aplica o filtro de vistos apenas nas descrições
-    padrao_descricao = '|'.join(palavras_proibidas_descricao)
+    padrao_descricao = '|'.join(re.escape(p) for p in palavras_proibidas_descricao)
     df_final = df_final[~df_final['description'].str.contains(padrao_descricao, case=False, na=False)]
 
     # 3. Anti-Duplicidade
@@ -328,7 +382,6 @@ def main():
     # =========================================================================
     # 3b. Filtro BRASIL somente REMOTO (regra de ouro do candidato)
     # =========================================================================
-    import re
     def eh_brasil_presencial(row):
         loc = str(row.get('location', '') or '')
         eh_br = bool(re.search(r'brasil|brazil', loc, re.IGNORECASE))
@@ -355,8 +408,16 @@ def main():
         print("🛑 Nenhuma vaga remoto relevante inédita restante.")
         return
 
-    print(f"\n✅ Sobraram {total_vagas} vagas INÉDITAS (remoto). Disparando para a Inteligência Artificial...\n")
+    print(f"\n✅ Sobraram {total_vagas} vagas INÉDITAS (remoto).\n")
     print("-" * 60)
+
+    # --dry-run: mostra o que seria enviado e encerra (sem n8n/memória/digest)
+    if args.dry_run:
+        for index, row in df_final.iterrows():
+            print(f"📦 [{row.get('location', '')}] {row.get('company', '')} - {row.get('title', '')}")
+        print("-" * 60)
+        print("🧪 MODO DRY-RUN: nada foi enviado ao n8n, memória não alterada, digest não disparado.")
+        return
 
     sucesso = 0
     # 4. Envio para Orquestração no n8n

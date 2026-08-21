@@ -6,6 +6,9 @@
 #   run_careerops.sh digest          # igual acima + dispara digest diário
 #   run_careerops.sh <pais>          # varre UM país isolado (ex: Brazil, holanda)
 #   run_careerops.sh <pais> digest   # país isolado + digest
+#   run_careerops.sh banks           # SÓ portais de bancos BR (Gupy)
+#   run_careerops.sh Brazil banks    # Brazil (JobSpy) + bancos
+#   run_careerops.sh Brazil banks digest
 #
 # Sem país: o main.py lê config.json e varre os targets definidos lá.
 # Com país: força varredura isolada (ignora config.json para a escolha do país).
@@ -17,16 +20,23 @@ mkdir -p "$LOGDIR"
 
 ARG1="${1:-}"
 ARG2="${2:-}"
+ARG3="${3:-}"
 
-# Resolve country + digest from args (order-independent-ish)
+# Resolve country + digest + source from args (order-independent-ish)
 COUNTRY=""
 DIGEST_FLAG=""
-if [ "$ARG1" = "digest" ]; then
-    DIGEST_FLAG="--digest"
-elif [ -n "$ARG1" ]; then
-    COUNTRY="$ARG1"
-    [ "$ARG2" = "digest" ] && DIGEST_FLAG="--digest"
-fi
+SOURCE_FLAG=""
+for a in "$ARG1" "$ARG2" "$ARG3"; do
+    case "$a" in
+        digest)      DIGEST_FLAG="--digest" ;;
+        banks)       SOURCE_FLAG="--source banks" ;;
+        "")          ;;
+    esac
+done
+case "$ARG1" in
+    digest|banks) ;;
+    *)            [ -n "$ARG1" ] && COUNTRY="$ARG1" ;;
+esac
 
 # Log file (no country in name when scanning config.json)
 if [ -n "$COUNTRY" ]; then
@@ -36,6 +46,7 @@ else
     LOG="$LOGDIR/careerops-$(date +%Y%m%d).log"
     MODE_ARGS=""   # no --country => main.py uses config.json targets
 fi
+[ -n "$SOURCE_FLAG" ] && MODE_ARGS="$MODE_ARGS $SOURCE_FLAG"
 
 cd "$PROJECT" || { echo "Falha ao acessar $PROJECT"; exit 3; }
 

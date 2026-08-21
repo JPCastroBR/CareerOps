@@ -8,7 +8,7 @@
 ## 🎯 Para que serve
 
 Automatiza a procura de emprego para perfis tech (SRE, DevOps, Cloud, Platform, Infra):
-- **Busca** em LinkedIn + Indeed via JobSpy
+- **Busca** em LinkedIn + Indeed via JobSpy **+ portais de bancos brasileiros** (Gupy e Workday)
 - **Filtra** localmente (blocklist, anti-duplicidade, modalidade)
 - **Analisa** com IA (OpenAI/OpenRouter) comparando vaga vs seu currículo
 - **Roteia por score** (via workflow `careerops-jobs`):
@@ -63,7 +63,7 @@ flowchart TD
 
 | Fase | Componente | Função |
 |------|-----------|--------|
-| **A: Coleta** | `main.py` + `jobspy.py` | Busca LinkedIn/Indeed, 200 vagas/país, query OR |
+| **A: Coleta** | `main.py` + `jobspy.py` + `banks.py` | Busca LinkedIn/Indeed (200 vagas/país, query OR) + portais de bancos BR (Gupy/Workday) |
 | **B: Filtragem** | `filters.py` | Blocklist regex (título+descrição), anti-dup (`vagas_processadas.txt`), BR remoto-only |
 | **C: Envio** | `run_careerops.sh` | POST webhook n8n, rate-limit 2.5s, digest flag |
 | **D: Orquestração** | n8n (`careerops-jobs`) | Guard Rails → IA (OpenAI) → Score → Sheets (Candidatar ≥70 / Auditoria <70) + Telegram aprovadas |
@@ -155,7 +155,12 @@ O n8n lê dois Google Docs (PT + EN). Configure os IDs no workflow `careerops-cu
     { "country": "worldwide", "work_mode": "remote" }
   ],
   "title_blocklist": ["junior", "intern", "manager"],
-  "brazil_remote_only": true
+  "brazil_remote_only": true,
+  "banks": [
+    { "name": "Itaú", "subdomain": "vemproitau", "source": "gupy" }
+  ],
+  "bank_results_per_bank": 50,
+  "bank_include_keywords": ["sre", "devops", "cloud"]
 }
 ```
 
@@ -173,6 +178,57 @@ Lista de termos (case-insensitive) que descartam a vaga pelo **título**. Se vaz
 ### `brazil_remote_only`
 - `true` (padrão): descarta vagas do Brasil presenciais/híbridas (filtro extra por regex em location+título).
 - `false`: mantém todas as modalidades do Brasil.
+
+### `banks` (portais de carreira de bancos brasileiros)
+Além de LinkedIn/Indeed (JobSpy), o pipeline varre portais próprios de bancos **BR** — fontes **Gupy** (`__NEXT_DATA__` do SSR) e **Workday** (API pública `cxs/jobs` + JSON-LD da página). Ideal para vagas SRE/DevOps/Cloud que os bancos só divulgam no portal interno, e para se candidatar **direto no site do banco** (link aponta pra lá).
+
+```json
+{
+  "banks": [
+    { "name": "Itaú",    "subdomain": "vemproitau", "source": "gupy" },
+    { "name": "Sicredi", "subdomain": "sicredi",    "source": "gupy" },
+    { "name": "BMG",     "subdomain": "bmg",        "source": "gupy" },
+    { "name": "Santander", "subdomain": "santander.wd3.myworkdayjobs.com",
+      "source": "workday",
+      "workday": { "tenant": "santander", "site": "SantanderCareers" },
+      "results": 25 }
+  ],
+  "bank_results_per_bank": 50,
+  "bank_include_keywords": ["sre", "reliability", "devops", "platform", "infrastructure", "cloud", "nuvem", "kubernetes", "terraform", "aws", "azure", "gcp"]
+}
+```
+
+| Chave | Obrigatória | Descrição |
+|-------|-------------|-----------|
+| `name` | sim | Rótulo exibido no pipeline (empresa no output) |
+| `subdomain` | sim | Subdomínio do portal (`vemproitau` p/ Gupy; host `*.workdayjobs.com` p/ Workday) |
+| `source` | não | `gupy` (padrão) ou `workday` |
+| `workday.tenant` / `workday.site` | se `source=workday` | Tenant + código do site Workday (vêm da URL do portal) |
+| `results` | não | Teto de detalhes por banco (sobrepõe `bank_results_per_bank`) |
+
+- `bank_include_keywords`: pré-filtro de **título** aplicado ANTES de baixar a página de detalhe (economiza requests em portais com centenas de vagas).
+- `bank_results_per_bank`: teto de detalhes buscados por banco (default `50`).
+- Sem `source` configurado → usa `gupy`. Suporta **Gupy** (Itaú/Sicredi/BMG) e **Workday** (Santander) atualmente; Cornerstone/CSOD exige token anônimo — futura Fase.
+- Rodam apenas em varredura **Brasil/global** e respeitam `brazil_remote_only` (só remoto).
+
+> **Peculiaridade Workday**: a API `cxs/jobs` rejeita (`HTTP 400`) buscas com `limit ≥ 22`. O adapter usa `limit=20`, aplica um *rate gate* (≤8 req/60s, gap 2.5s) e pausa com backoff se o portal reclamar.
+
+### `--source` (CLI)
+| Valor | Comportamento |
+|-------|---------------|
+| `all` (padrão) | JobSpy (LinkedIn/Indeed) **+** bancos BR |
+| `jobspy` | Só LinkedIn/Indeed (comportamento antigo) |
+| `banks` | Só portais de bancos BR (Gupy + Workday) |
+
+```bash
+docker exec careerops-collector uv run src/careerops/main.py --source banks --list
+docker exec careerops-collector uv run src/careerops/main.py --source banks --dry-run   # sem n8n/memória/digest
+./scripts/run_careerops.sh banks                 # só bancos
+./scripts/run_careerops.sh Brazil banks digest   # Brasil (JobSpy) + bancos
+```
+
+### `--dry-run`
+Coleta, filtra e mostra o que seria enviado **sem** tocar n8n, memória (`vagas_processadas.txt`) ou digest. Útil pra validar fontes novas.
 
 ### Exemplo prático
 Quer só **Brasil remoto** + **Portugal remoto** + **worldwide remoto**?
@@ -358,6 +414,7 @@ CareerOps/
 │       ├── main.py        # CLI entry (--country, --list, --digest)
 │       └── collector/
 │           ├── jobspy.py      # Wrapper JobSpy
+│           ├── banks.py       # Portais de bancos BR (Gupy + Workday)
 │           ├── filters.py     # Blocklist + anti-dup
 │           └── parser.py      # Normalização payload
 └── README.md
