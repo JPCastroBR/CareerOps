@@ -155,6 +155,7 @@ O n8n lê dois Google Docs (PT + EN). Configure os IDs no workflow `careerops-cu
     { "country": "worldwide", "work_mode": "remote" }
   ],
   "title_blocklist": ["junior", "intern", "manager"],
+  "company_blocklist": ["jobgether", "quik hire staffing", "lensa"],
   "brazil_remote_only": true,
   "banks": [
     { "name": "Itaú", "subdomain": "vemproitau", "source": "gupy" }
@@ -362,6 +363,13 @@ palavras_proibidas_descricao = [
     # adicione seus termos
 ]
 ```
+
+### Empresas (aggregators / spam que não são empregadores reais) — via `config.json`
+Bloqueia vagas de empresas listadas **antes** de enviar ao n8n/IA (economiza chamadas de IA com lixo). Match por substring, case-insensitive, no campo `company`.
+```json
+"company_blocklist": ["jobgether", "quik hire staffing", "lensa", "grabjobs", "jobrapido"]
+```
+*Default seguro em `main.py` já traz esse pequeno conjunto; `config.json` sobrescreve se presente.*
 
 > **Dica**: Mantenha listas em arquivo separado (`config/blocklist.yaml`) e carregue no `main.py` para versionar mudanças.
 

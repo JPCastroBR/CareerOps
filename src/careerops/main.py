@@ -41,6 +41,9 @@ DEFAULT_CONFIG = {
     "results_per_country": 200,
     "targets": [{"country": "worldwide", "work_mode": "remote"}],
     "title_blocklist": [],
+    "company_blocklist": [
+        "jobgether", "quik hire staffing", "lensa", "grabjobs", "jobrapido",
+    ],
     "brazil_remote_only": True,
     # Portais de carreira de bancos brasileiros (fonte Gupy e/ou Workday).
     "banks": [],
@@ -173,6 +176,7 @@ def main():
 
     brazil_remote_only = cfg.get("brazil_remote_only", True)
     title_blocklist_cfg = cfg.get("title_blocklist", [])
+    company_blocklist_cfg = cfg.get("company_blocklist", DEFAULT_CONFIG["company_blocklist"]) or []
     banks_cfg = cfg.get("banks", DEFAULT_CONFIG["banks"]) or []
     bank_results = cfg.get("bank_results_per_bank", DEFAULT_CONFIG["bank_results_per_bank"])
     bank_include = cfg.get("bank_include_keywords", DEFAULT_CONFIG["bank_include_keywords"]) or []
@@ -364,6 +368,16 @@ def main():
     # Aplica o filtro de vistos apenas nas descrições
     padrao_descricao = '|'.join(re.escape(p) for p in palavras_proibidas_descricao)
     df_final = df_final[~df_final['description'].str.contains(padrao_descricao, case=False, na=False)]
+
+    # 2b. Blocklist de EMPRESAS (aggregators/spam que não são empregadores reais)
+    if company_blocklist_cfg and not df_final.empty:
+        palavras_proibidas_empresa = [p.lower() for p in company_blocklist_cfg]
+        padrao_empresa = '|'.join(re.escape(p) for p in palavras_proibidas_empresa)
+        total_antes_emp = len(df_final)
+        df_final = df_final[~df_final['company'].astype(str).str.lower().str.contains(padrao_empresa, na=False)]
+        vagas_empresa = total_antes_emp - len(df_final)
+        if vagas_empresa > 0:
+            print(f"🚫 Descartadas {vagas_empresa} vagas de empresas bloqueadas (company_blocklist).")
 
     # 3. Anti-Duplicidade
     vagas_antigas = carregar_memoria()
