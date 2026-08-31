@@ -417,7 +417,7 @@ def main():
         return
 
     # =========================================================================
-    # 3b. Filtro BRASIL somente REMOTO (regra de ouro do candidato)
+    # 3b. Filtro BRASIL: remoto + híbrido (presencial puro é descartado)
     # =========================================================================
     def eh_brasil_presencial(row):
         loc = str(row.get('location', '') or '')
@@ -430,15 +430,19 @@ def main():
         except Exception:
             is_remote = False
         texto = ' '.join(str(row.get(c, '') or '') for c in ('title', 'description', 'job_type', 'job_level')).lower()
-        indica_presencial = bool(re.search(r'presencial|onsite|on-site|on site|híbrido|hibrido|hybrid', texto))
-        return (not is_remote) or indica_presencial
+        # Híbrido é aceito; só descarta se for explicitamente presencial/onsite
+        indica_presencial_puro = bool(re.search(r'\b(presencial|onsite|on-site|on site)\b', texto))
+        # Se a vaga diz "híbrido" no texto, NÃO é presencial puro (é aceitável)
+        indica_hibrido = bool(re.search(r'\b(h[íi]brido|hybrid)\b', texto))
+        # Presencial puro = não remoto E (indica presencial E NÃO indica híbrido)
+        return (not is_remote) and indica_presencial_puro and not indica_hibrido
 
     antes_br = len(df_final)
     if brazil_remote_only:
         df_final = df_final[~df_final.apply(eh_brasil_presencial, axis=1)]
     descartadas_br = antes_br - len(df_final)
     if descartadas_br > 0:
-        print(f"🇧🇷 Descartadas {descartadas_br} vaga(s) do Brasil presencial/híbrida (fora do escopo remoto).")
+        print(f"🇧🇷 Descartadas {descartadas_br} vaga(s) do Brasil presencial pura (remoto + híbrido mantidos).")
 
     total_vagas = len(df_final)
     if total_vagas == 0:

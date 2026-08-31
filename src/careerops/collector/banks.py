@@ -63,9 +63,16 @@ GUPY_TO_REMOTE = {
     "on-site": False, "on_site": False, "presencial": False, "presential": False,
 }
 
+GUPY_TO_ACCEPTABLE = {
+    "remote": True, "remoto": True,
+    "hybrid": True, "hibrido": True, "híbrido": True,
+    "on-site": False, "on_site": False, "presencial": False, "presential": False,
+}
+
 # Workday has no workplaceType; detect remote from title/location/description.
 WD_REMOTE_MARKERS = ["remoto", "remote", "teletrabalho", "home office", "work from home", "homebased"]
-WD_HYBRID_ONSITE = ["híbrido", "hibrido", "hybrid", "presencial", "on-site", "onsite", "escritório", "office"]
+WD_HYBRID_MARKERS = ["híbrido", "hibrido", "hybrid"]
+WD_ONSITE_MARKERS = ["presencial", "on-site", "onsite", "escritório", "office"]
 
 # locationsText fragments that look like Brazil (used to pre-filter before
 # fetching full detail pages).
@@ -194,13 +201,31 @@ def _gu_is_remote(item: dict) -> bool:
     return GUPY_TO_REMOTE.get(wtype, False)
 
 
+def _gu_is_acceptable_br(item: dict) -> bool:
+    """Aceita remoto OU híbrido para Brasil (quando brazil_remote_only=True)."""
+    wp = item.get("workplace") if isinstance(item, dict) else None
+    if isinstance(wp, dict):
+        item = wp
+    wtype = str(item.get("workplaceType", "")).lower()
+    return GUPY_TO_ACCEPTABLE.get(wtype, False)
+
+
+def _is_acceptable_br_text(text: str) -> bool:
+    """Aceita remoto OU híbrido para Brasil (Workday)."""
+    tl = text.lower()
+    has_remote = any(k in tl for k in WD_REMOTE_MARKERS)
+    has_hybrid = any(k in tl for k in WD_HYBRID_MARKERS)
+    has_onsite = any(k in tl for k in WD_ONSITE_MARKERS)
+    return (has_remote or has_hybrid) and not has_onsite
+
+
 def _run_gupy(session: requests.Session, target: BankTarget, include: list[str],
               results_wanted: int, remote_only_br: bool) -> list[dict]:
     jobs, _ = _gu_fetch_job_list(session, target)
     candidates = []
     for j in jobs:
         title = str(j.get("title") or "")
-        if remote_only_br and not _gu_is_remote(j):
+        if remote_only_br and not _gu_is_acceptable_br(j):
             continue
         if not _include_title(title, include):
             continue
@@ -223,7 +248,8 @@ def _run_gupy(session: requests.Session, target: BankTarget, include: list[str],
             if detail.get(k)
         )
         remote = _gu_is_remote(detail)
-        if remote_only_br and not remote:
+        acceptable_br = _gu_is_acceptable_br(detail)
+        if remote_only_br and not acceptable_br:
             continue
         rows.append({
             "title": title_d,
@@ -234,7 +260,7 @@ def _run_gupy(session: requests.Session, target: BankTarget, include: list[str],
             "job_type": str(detail.get("jobType") or j.get("type") or ""),
             "job_level": "",
             "is_remote": remote,
-            "remote": "remote" if remote else "not_remote",
+            "remote": "remote" if remote else ("hybrid" if acceptable_br and not remote else "not_remote"),
             "date_posted": detail.get("publishedAt"),
             "date_valid_through": detail.get("expiresAt"),
             "source": f"gupy:{target.subdomain}",
@@ -354,7 +380,8 @@ def _run_workday(client: httpx.Client, gate: _WDRateGate, target: BankTarget,
         desc = _strip_html(desc_html) if desc_html else ""
         marker_text = f"{title_d} {_wd_job_location(detail)} {desc[:1200]}"
         remote = _is_remote_text(marker_text)
-        if remote_only_br and not remote:
+        acceptable_br = _is_acceptable_br_text(marker_text)
+        if remote_only_br and not acceptable_br:
             continue
 
         company = target.name
@@ -371,6 +398,7 @@ def _run_workday(client: httpx.Client, gate: _WDRateGate, target: BankTarget,
             "job_type": str(detail.get("employmentType") or ""),
             "job_level": "",
             "is_remote": remote,
+            "remote": "remote" if remote else ("hybrid" if acceptable_br and not remote else "not_remote"),
             "remote": "remote" if remote else "not_remote",
             "date_posted": detail.get("datePosted"),
             "date_valid_through": detail.get("validThrough"),
