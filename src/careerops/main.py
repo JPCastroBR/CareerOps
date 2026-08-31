@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import json
 import re
@@ -45,6 +46,7 @@ DEFAULT_CONFIG = {
         "jobgether", "quik hire staffing", "lensa", "grabjobs", "jobrapido",
     ],
     "brazil_remote_only": True,
+    "inhire": {},
     # Portais de carreira de bancos brasileiros (fonte Gupy e/ou Workday).
     "banks": [],
     "bank_results_per_bank": 50,
@@ -103,11 +105,12 @@ def parse_args():
     )
     parser.add_argument(
         "--source",
-        choices=["jobspy", "banks", "all"],
+        choices=["jobspy", "banks", "inhire", "all"],
         default="all",
         help="Fonte de vagas: 'jobspy' (LinkedIn+Indeed, padrão antigo), "
              "'banks' (portais de bancos BR via Gupy) ou 'all' (ambos). "
-             "Padrão: all.",
+             "'inhire' habilita o adapter de tenants InHire (portal de carreira "
+             "de empresas). Padrão: all.",
     )
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -150,6 +153,11 @@ def salvar_na_memoria(url):
 
 
 def main():
+    # Subcomando InHire (Fase 11): `python -m careerops.main inhire <acao>`
+    # Não interfere no parser principal quando não invocado.
+    if len(sys.argv) > 1 and sys.argv[1] == "inhire":
+        return inhire_cli(sys.argv[2:])
+
     args = parse_args()
     cfg = carregar_config()
 
@@ -190,6 +198,8 @@ def main():
     source = args.source
     run_jobspy = source in ("jobspy", "all")
     run_banks = source in ("banks", "all") and bool(banks_cfg) and eh_brasil
+    inhire_cfg = cfg.get("inhire", DEFAULT_CONFIG.get("inhire")) or {}
+    run_inhire = (source == "inhire") or (source == "all" and bool(inhire_cfg))
 
     # ----------------------------------------------------------------------
     # Filtro por país / países / all (modos de varredura)
@@ -281,6 +291,19 @@ def main():
                 todas_vagas.append(banks_df)
         except Exception as e:
             print(f"❌ Erro na varredura de bancos: {e}")
+
+    # 1c. Adapter InHire (tenants de empresas via portal de carreira próprio).
+    #     Descobre → valida → coleta → faz matching local e deduplica.
+    if run_inhire:
+        print(f"\n🟣 Varrendo tenants InHire (descoberta + validação + coleta)...")
+        try:
+            from careerops.collector.inhire import fetch_inhire_jobs
+            from careerops.collector.inhire.config import load_config as load_inhire_config
+            inhire_df = fetch_inhire_jobs(cfg=load_inhire_config())
+            if not inhire_df.empty:
+                todas_vagas.append(inhire_df)
+        except Exception as e:
+            print(f"❌ Erro na varredura InHire: {e}")
 
     if not todas_vagas:
         print("📭 Nenhuma vaga encontrada na varredura de hoje.")
@@ -495,6 +518,112 @@ def alvos_ordem_completa():
         {"pais": "Canada"}, {"pais": "Sweden"}, {"pais": "Austria"},
         {"pais": "Finland"}, {"pais": "France"}, {"pais": "worldwide"},
     ]
+
+
+def inhire_cli(argv: list[str]) -> None:
+    """Subcomando InHire (Fase 11).
+
+    Uso:
+        python -m careerops.main inhire discover   [--force] [--source seed|wayback|urlscan]
+        python -m careerops.main inhire validate   [--force] [--limit N]
+        python -m careerops.main inhire jobs       [--tenant T] [--min-score N] [--limit N]
+        python -m careerops.main inhire run        [--force] [--min-score N]
+
+    Flags opcionais: --force (revalida tudo), --limit, --tenant, --min-score.
+    """
+    import argparse
+
+    from careerops.collector.inhire import (
+        build_inhire_dataframe,
+        collect_all_tenants,
+        discover_tenants,
+        validate_tenants,
+    )
+    from careerops.collector.inhire.config import InhireConfig, load_config
+    from careerops.collector.inhire.http import InhireHttp
+    from careerops.collector.inhire.repository import JobRepository, TenantRepository
+
+    p = argparse.ArgumentParser(prog="careerops inhire", description="InHire tenant/job adapter")
+    sub = p.add_subparsers(dest="acao", required=True)
+
+    pd_ = sub.add_parser("discover", help="Descobre candidatos a tenant (sem validar)")
+    pd_.add_argument("--force", action="store_true")
+    pd_.add_argument("--source", help="seed|wayback|urlscan (sobrescreve config)")
+
+    pv = sub.add_parser("validate", help="Valida tenants conhecidos via API pública")
+    pv.add_argument("--force", action="store_true")
+    pv.add_argument("--limit", type=int, default=0)
+
+    pj = sub.add_parser("jobs", help="Coleta vagas dos tenants válidos")
+    pj.add_argument("--tenant", help="slug específico")
+    pj.add_argument("--min-score", type=int, default=0)
+    pj.add_argument("--limit", type=int, default=0)
+
+    pr = sub.add_parser("run", help="Pipeline completo: discover→validate→collect→dedupe")
+    pr.add_argument("--force", action="store_true")
+    pr.add_argument("--min-score", type=int, default=0)
+
+    a = p.parse_args(argv)
+    cfg = load_config()
+
+    if a.acao == "discover":
+        if a.source:
+            cfg.sources = [s.strip() for s in a.source.split(",") if s.strip()]
+        with InhireHttp(cfg.http) as http:
+            found = discover_tenants(cfg, http=http)
+        print(f"🔎 {len(found)} candidato(s) descoberto(s):")
+        for slug, src in sorted(found.items()):
+            print(f"   - {slug}  (source: {src})")
+        if not found:
+            print("💡 Dica: adicione slugs em data/inhire_seed.txt ou config.inhire.seed_tenants")
+
+    elif a.acao == "validate":
+        repo = TenantRepository()
+        known = {t.slug for t in repo.all() if t.active}
+        seed = set(load_seed_slugs_safe(cfg))
+        slugs = sorted(known | seed)
+        if a.limit:
+            slugs = slugs[: a.limit]
+        with InhireHttp(cfg.http) as http:
+            recs = validate_tenants(slugs, cfg, repo=repo, http=http)
+        ativos = [r for r in recs if r.active]
+        print(f"✅ {len(ativos)}/{len(recs)} tenant(s) ativo(s).")
+        for r in ativos:
+            print(f"   - {r.slug}  jobs={r.jobs_count}")
+
+    elif a.acao == "jobs":
+        repo = TenantRepository()
+        tenants = [t for t in repo.all() if t.active]
+        if a.tenant:
+            tenants = [t for t in tenants if t.slug == a.tenant.lower()]
+        if not tenants:
+            print("⚠️  Nenhum tenant ativo. Rode `inhire validate` primeiro.")
+            return
+        df, stats = collect_all_tenants(
+            tenants, cfg=cfg, include_keywords=cfg.include_keywords, min_score=a.min_score
+        )
+        if a.min_score:
+            df = df[df["match_score"].astype(float) >= a.min_score].reset_index(drop=True)
+        print(f"📦 {len(df)} vaga(s) coletada(s). stats={stats}")
+        for _, row in df.iterrows():
+            print(f"   - [{row.get('match_score')}] {row.get('company')} | {row.get('title')} | {row.get('location')}")
+
+    elif a.acao == "run":
+        from careerops.collector.inhire import fetch_inhire_jobs
+        df = fetch_inhire_jobs(cfg=cfg, min_score=a.min_score)
+        if df.empty:
+            print("📭 Nenhuma vaga InHire.")
+            return
+        if a.min_score:
+            df = df[df["match_score"].astype(float) >= a.min_score].reset_index(drop=True)
+        print(f"🟣 InHire run: {len(df)} vaga(s) após matching/dedupe.")
+        for _, row in df.iterrows():
+            print(f"   - [{row.get('match_score')}] {row.get('company')} | {row.get('title')} | {row.get('location')}")
+
+
+def load_seed_slugs_safe(cfg):
+    from careerops.collector.inhire.config import load_seed_slugs
+    return load_seed_slugs(cfg)
 
 
 if __name__ == "__main__":

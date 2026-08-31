@@ -9,6 +9,8 @@
 #   run_careerops.sh banks           # SÓ portais de bancos BR (Gupy)
 #   run_careerops.sh Brazil banks    # Brazil (JobSpy) + bancos
 #   run_careerops.sh Brazil banks digest
+#   run_careerops.sh inhire           # SÓ tenants InHire (descobre→valida→coleta→match CV→n8n)
+#   run_careerops.sh inhire digest    # InHire + digest Telegram no fim
 #
 # Sem país: o main.py lê config.json e varre os targets definidos lá.
 # Com país: força varredura isolada (ignora config.json para a escolha do país).
@@ -30,11 +32,12 @@ for a in "$ARG1" "$ARG2" "$ARG3"; do
     case "$a" in
         digest)      DIGEST_FLAG="--digest" ;;
         banks)       SOURCE_FLAG="--source banks" ;;
+        inhire)      SOURCE_FLAG="--source inhire" ;;
         "")          ;;
     esac
 done
 case "$ARG1" in
-    digest|banks) ;;
+    digest|banks|inhire) ;;
     *)            [ -n "$ARG1" ] && COUNTRY="$ARG1" ;;
 esac
 

@@ -63,7 +63,7 @@ flowchart TD
 
 | Fase | Componente | Função |
 |------|-----------|--------|
-| **A: Coleta** | `main.py` + `jobspy.py` + `banks.py` | Busca LinkedIn/Indeed (200 vagas/país, query OR) + portais de bancos BR (Gupy/Workday) |
+| **A: Coleta** | `main.py` + `jobspy.py` + `banks.py` + `inhire/` | Busca LinkedIn/Indeed (200 vagas/país, query OR) + portais de bancos BR (Gupy/Workday) + tenants InHire (API pública) |
 | **B: Filtragem** | `filters.py` | Blocklist regex (título+descrição), anti-dup (`vagas_processadas.txt`), BR remoto-only |
 | **C: Envio** | `run_careerops.sh` | POST webhook n8n, rate-limit 2.5s, digest flag |
 | **D: Orquestração** | n8n (`careerops-jobs`) | Guard Rails → IA (OpenAI) → Score → Sheets (Candidatar ≥70 / Auditoria <70) + Telegram aprovadas |
@@ -214,12 +214,55 @@ Além de LinkedIn/Indeed (JobSpy), o pipeline varre portais próprios de bancos 
 
 > **Peculiaridade Workday**: a API `cxs/jobs` rejeita (`HTTP 400`) buscas com `limit ≥ 22`. O adapter usa `limit=20`, aplica um *rate gate* (≤8 req/60s, gap 2.5s) e pausa com backoff se o portal reclamar.
 
+### `inhire` (tenants InHire — Fases 1-12)
+
+Fonte nativa que varre **tenants** da InHire (`*.inhire.app`) — ATS usado por
+várias empresas BR (Magalu, Ifood, Bradesco, Stone, XP, etc.). Sem base class,
+sem DB: descobretenants (`seed` + Wayback CDX), valida via API pública
+(`GET https://api.inhire.app/job-posts/public/pages` + header `X-Tenant`), coleta
+vagas ativas, normaliza, ranqueia contra o CV (`cv_profile.CVProfile`) e
+deduplica. Persistência em JSON/JSONL em `data/`.
+
+```json
+{
+  "inhire": {
+    "enabled": true,
+    "api_base": "https://api.inhire.app",
+    "seed_file": "data/inhire_seed.txt",
+    "sources": ["seed", "wayback"],
+    "include_keywords": ["sre", "devops", "platform", "cloud", "kubernetes", "aws"],
+    "min_score": 60,
+    "http": { "timeout": 10, "retries": 3, "backoff_base": 1.5, "delay": 0.4 }
+  }
+}
+```
+
+| Subcomando | Comportamento |
+|------------|---------------|
+| `inhire discover [--source seed\|wayback]` | Lista candidatos a tenant (sem validar) |
+| `inhire validate [--limit N]` | Valida tenants (seed + repo) via API e persiste ativos |
+| `inhire jobs [--tenant X] [--min-score N]` | Coleta vagas dos tenants ativos |
+| `inhire run [--min-score N] [--force]` | Pipeline completo: discover→validate→collect→dedupe |
+
+```bash
+docker exec careerops-collector uv run src/careerops/main.py inhire discover --source seed
+docker exec careerops-collector uv run src/careerops/main.py inhire validate
+docker exec careerops-collector uv run src/careerops/main.py inhire run --min-score 0
+```
+
+- `min_score` (default `60`): threshold do matching local; `< 60` cai em `LOW` mas não é descartado aqui — só filtrado quando `> 0`.
+- `data/inhire_seed.txt`: uma slug por linha (sem `.inhire.app`); comentários com `#`; slugs são sanitizados (minúsculo, sem acento).
+- URL da vaga: `https://<tenant>.inhire.app/vagas/<jobId>/<slug-do-titulo>`.
+- **Descrição**: o `jobsPage` não a traz; cada vaga é enriquecida via `GET /job-posts/public/pages/<jobId>` (header `X-Tenant`) antes do matching — evita que a IA do n8n alucine com título vazio.
+- Matching local (7 dimensões): `role`, `skills`, `cloud`, `seniority`, `location`, `remote`, `experience`. Edite `cv_profile.py` quando o CV evoluir.
+
 ### `--source` (CLI)
 | Valor | Comportamento |
 |-------|---------------|
 | `all` (padrão) | JobSpy (LinkedIn/Indeed) **+** bancos BR |
 | `jobspy` | Só LinkedIn/Indeed (comportamento antigo) |
 | `banks` | Só portais de bancos BR (Gupy + Workday) |
+| `inhire` | Só tenants InHire (discover→validate→collect→dedupe) |
 
 ```bash
 docker exec careerops-collector uv run src/careerops/main.py --source banks --list
