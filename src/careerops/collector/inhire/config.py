@@ -46,7 +46,7 @@ class InhireConfig:
         ],
     )
     seed_tenants: list[str] = field(default_factory=list)  # se seed_file ausente
-    sources: list[str] = field(default_factory=lambda: ["seed", "wayback", "crtsh"])
+    sources: list[str] = field(default_factory=lambda: ["seed", "wayback", "crtsh", "bruteforce"])
     # wayback usa o CDX público; rate limit embutido em tenant_discovery.
     min_score: int = 0     # threshold do matching (Fase 9); 0 = não descarta na coleta
     http: HttpSettings = field(default_factory=HttpSettings)

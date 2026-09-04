@@ -24,7 +24,7 @@ import re
 import urllib.parse
 from typing import Iterable
 
-from careerops.collector.inhire.config import InhireConfig, load_seed_slugs
+from careerops.collector.inhire.config import InhireConfig, load_seed_slugs, _slugify
 from careerops.collector.inhire.http import InhireHttp
 
 log = logging.getLogger("careerops.inhire.discovery")
@@ -157,6 +157,82 @@ def _from_urlscan(http: InhireHttp, *, query: str = "*.inhire.app", limit: int =
     return found
 
 
+# ------------------------------------------------------------------- BRUTEFORCE
+# Wordlist embutida de empresas/startups brasileiras conhecidas (comum em tech)
+_BUILTIN_WORDLIST = [
+    # Grandes tech BR
+    "nubank", "ifood", "magalu", "magazineluiza", "mercadolivre", "mercadopago",
+    "stone", "ebank", "inter", "c6bank", "btg", "xp", "clear", "rico", "modalmais",
+    "totvs", "linx", "senior", "sankhya", "datasul", "primecontrol",
+    "globant", "epam", "thoughtworks", "accenture", "ciandt", "stefanini", "ciandt",
+    "vtex", "nuvemshop", "lojaintegrada", "tray", "yampi", "moip", "pagar.me",
+    "stone", "pagseguro", "cielo", "getnet", "rede",
+    "99", "uber", "rappi", "loggi", "james", "ifood", "ze", "entregas",
+    "quintoandar", "loft", "vitec", "housi", "casa", "imovelweb", "zap",
+    "creditas", "bmg", "bancointer", "original", "next", "c6", "neon", "bs2",
+    "willbank", "meutudo", "meuseu", "caju", "swile", "flash", "beneficios",
+    "gympass", "wellhub", "vitat", "vittude", "vitalk", "zenklub",
+    "drconsulta", "vittude", "health", "einstein", "siris", "fleury",
+    "ambev", "coca-cola", "pepsico", "nestle", "unilever", "pg", "jbs", "marfrig",
+    "vale", "petrobras", "shell", "raizen", "cosan", "copersucar",
+    "embratec", "weni", "take", "blip", "take", "zenvia", "mobitec",
+    "movile", "sympla", "eventim", "ingresse", "eventbrite",
+    "hotmart", "eduk", "descomplica", "estuda", "grancursos", "estrategia",
+    "alura", "cwi", "digitalhouse", "kodigo", "trybe", "kenzie", "awari",
+    "rocketseat", "cubos", "betrybe", "origamid", "fullcycle", "ignite",
+]
+
+# Sufixos/termos genéricos que NÃO são tenants válidos sozinhos
+_FALSE_POSITIVES = {
+    "tech", "labs", "digital", "solutions", "systems", "software", "data",
+    "ai", "ml", "cloud", "dev", "innovation", "ventures", "capital",
+    "br", "com", "www", "app", "api", "admin", "status", "cdn", "static",
+    "assets", "media", "files", "img", "images", "css", "js",
+}
+
+def _from_bruteforce(http: InhireHttp, *, wordlist_file: str = "", limit: int = 200) -> set[str]:
+    """Testa candidatos direto na API pública InHire.
+
+    Para cada slug na wordlist (arquivo ou builtin), faz:
+      GET /job-posts/public/pages  (header X-Tenant: <slug>)
+    Se retorna 200 e tem jobsPage (mesmo vazio), o tenant EXISTE.
+    Confiável pois testa a API real, não depende de fontes externas.
+    """
+    candidates: list[str] = []
+    if wordlist_file:
+        try:
+            with open(wordlist_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip().lower()
+                    if s and not s.startswith("#"):
+                        candidates.append(s)
+        except OSError:
+            pass
+    # Adiciona builtin se lista ainda pequena
+    if len(candidates) < 50:
+        candidates.extend(_BUILTIN_WORDLIST)
+    # Dedup, filtra false positives, limita
+    seen = set()
+    uniq = []
+    for s in candidates:
+        s = _slugify(s)
+        if s and s not in seen and s not in _FALSE_POSITIVES:
+            seen.add(s)
+            uniq.append(s)
+    candidates = uniq[:limit]
+
+    found: set[str] = set()
+    url = "https://api.inhire.app/job-posts/public/pages"
+    log.info("inhire discovery bruteforce begin candidates=%d", len(candidates))
+    for slug in candidates:
+        status, payload = http.request("GET", url, headers={"X-Tenant": slug}, accept_status=(200,))
+        if status == 200 and isinstance(payload, dict) and "jobsPage" in payload:
+            found.add(slug)
+            log.debug("inhire bruteforce hit: %s", slug)
+    log.info("inhire discovery bruteforce found=%d", len(found))
+    return found
+
+
 def _from_crtsh(http: InhireHttp, *, limit: int = 5000, cache_file: str = "", cache_ttl_s: int = 86400) -> set[str]:
     """crt.sh (Certificate Transparency logs) — grátis, sem auth, completo.
 
@@ -241,6 +317,10 @@ def discover_tenants(cfg: InhireConfig, http: InhireHttp | None = None) -> dict[
                     cache_ttl_s=cfg.tenant_cache_ttl_s,
                 ):
                     merged.setdefault(s, "crtsh")
+            elif src == "bruteforce":
+                wordlist = cfg.seed_file.replace("inhire_seed.txt", "inhire_bruteforce.txt")
+                for s in _from_bruteforce(http, wordlist_file=wordlist):
+                    merged.setdefault(s, "bruteforce")
             else:
                 log.warning("inhire discovery unknown source=%s (ignorado)", src)
     finally:
