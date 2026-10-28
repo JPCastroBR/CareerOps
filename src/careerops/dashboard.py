@@ -588,7 +588,7 @@ details.block > .body { padding: 0 16px 16px; }
             <option value="7">Últimos 7 dias</option>
             <option value="30">Últimos 30 dias</option>
           </select>
-          <input type="search" id="sheet-q" placeholder="Buscar empresa ou título…" style="max-width:280px" />
+          <input type="search" id="sheet-q" placeholder="Filtrar por título ou empresa…" autocomplete="off" style="max-width:280px" />
           <button class="ghost" onclick="loadSheets(true)">Atualizar</button>
           <span class="msg" id="sheet-msg"></span>
         </div>
@@ -608,7 +608,7 @@ details.block > .body { padding: 0 16px 16px; }
           <h1>Analisadas (local)</h1>
           <p>Registro local gerado pelo coletor. <a href="/api/jobs.csv">Baixar CSV</a></p>
         </div>
-        <div class="toolbar"><button class="ghost" onclick="loadJobsCSV()">Atualizar</button><span class="msg" id="jobs-msg"></span></div>
+        <div class="toolbar"><input type="search" id="jobs-q" placeholder="Filtrar por título ou empresa…" autocomplete="off" style="max-width:280px" /><button class="ghost" onclick="loadJobsCSV()">Atualizar</button><span class="msg" id="jobs-msg"></span></div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Data</th><th>Empresa</th><th>Título</th><th>Local</th><th>Fonte</th><th>Score</th></tr></thead>
@@ -830,8 +830,8 @@ details.block > .body { padding: 0 16px 16px; }
       $("settings-menu").classList.add("hidden");
       document.querySelectorAll("main > section").forEach((s) => s.classList.toggle("hidden", s.id !== "view-" + v));
       if (v === "overview") tick();
-      if (v === "vagas") loadSheets();
-      if (v === "analisadas") loadJobsCSV();
+      if (v === "vagas") { const sq = $("sheet-q"); if (sq) sq.value = ""; sheetPage = 0; loadSheets(); }
+      if (v === "analisadas") { const jq = $("jobs-q"); if (jq) jq.value = ""; jobsPage = 0; loadJobsCSV(); }
       if (v === "config") loadGuided("config.json");
       if (v === "perfil") loadGuided("profile.yaml");
       if (v === "agenda") loadSchedule();
@@ -1156,7 +1156,9 @@ details.block > .body { padding: 0 16px 16px; }
       renderJobs();
     }
     function renderJobs() {
-      const rows = window._jobs || [];
+      let rows = window._jobs || [];
+      const q = ($("jobs-q").value || "").toLowerCase().trim();
+      if (q) rows = rows.filter((r) => `${r.title || ""} ${r.company || ""}`.toLowerCase().includes(q));
       const size = 25;
       const pages = Math.max(1, Math.ceil(rows.length / size));
       if (jobsPage > pages - 1) jobsPage = pages - 1;
@@ -1220,6 +1222,7 @@ details.block > .body { padding: 0 16px 16px; }
     }));
     $("sheet-days").onchange = () => loadSheets();
     $("sheet-q").oninput = () => { sheetPage = 0; renderSheets(); };
+    $("jobs-q").oninput = () => { jobsPage = 0; renderJobs(); };
     async function loadSheets(force) {
       $("sheet-msg").textContent = "carregando…";
       const days = $("sheet-days").value || "0";
@@ -1271,7 +1274,7 @@ details.block > .body { padding: 0 16px 16px; }
   companies: "Empresas", companies_file: "Arquivo de empresas", include_keywords: "Palavras-chave incluídas",
   subdomain: "Subdomínio", source: "Origem", name: "Nome", workday: "Workday", tenant: "Tenant", site: "Site",
   results: "Resultados", timezone: "Fuso horário", times: "Horários", digest_at: "Horário do digest",
-  misfire_grace_minutes: "Tolerância (min)",
+  misfire_grace_minutes: "Tolerância (min)", prompt: "System prompt da IA", max_description_chars: "Máx. de caracteres da descrição",
   // profile
   profile_version: "Versão do perfil", source_of_truth: "Fonte de verdade", identity: "Identidade",
   level_definitions: "Definições de nível", source_definitions: "Definições de origem",
@@ -1309,9 +1312,13 @@ const CONFIG_SECTIONS = [
         { key: "company_blocklist", label: "Bloquear empresas", type: "lines", rows: 6, help: "Uma empresa por linha. Ex.: jobgether." },
         { key: "bank_include_keywords", label: "Palavras-chave (Gupy/Workday)", type: "lines", rows: 6, help: "Um termo por linha. Ex.: sre, devops, cloud." },
       ]},
+      { n: 5, title: "IA (prompt)", desc: "Instruções da IA. Editável sem republicar o n8n.", fields: [
+        { key: "prompt", label: "System prompt", type: "textarea", rows: 18, help: "Mensagem de sistema enviada no payload (substitui a do n8n)." },
+        { key: "max_description_chars", label: "Máx. de caracteres da descrição", type: "number", help: "Descrições maiores são cortadas antes de ir à IA (economia de tokens). Ex.: 4000." },
+      ]},
     ];
     const CONFIG_CURATED = new Set(["search_query", "hours_old", "results_per_country", "targets", "work_modes",
-      "bank_results_per_bank", "banks", "bank_include_keywords", "title_blocklist", "company_blocklist", "inhire", "schedule", "scan_sources", "other_sources", "results_per_source"]);
+      "bank_results_per_bank", "banks", "bank_include_keywords", "title_blocklist", "company_blocklist", "inhire", "schedule", "scan_sources", "other_sources", "results_per_source", "prompt", "max_description_chars"]);
     const PROFILE_SECTIONS = [
       { n: 1, title: "Identidade", desc: "Seus dados básicos e links.", fields: [
         { key: "identity.name", label: "Nome", type: "text", help: "Nome completo." },
