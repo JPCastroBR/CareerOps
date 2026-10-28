@@ -1,12 +1,12 @@
 # CareerOps — Roadmap
 
 > **Visão**: Pipeline de automação de busca de emprego (SRE/DevOps/Cloud) que coleta → filtra → analisa com IA → registra em Google Sheets + Telegram, com agendamento multi-horário resiliente a desligamento.
-> **Repositório**: https://github.com/JPCastroBR/CareerOps (privado)
-> **Atualizado**: 2026-10-08
+> **Repositório**: https://github.com/JPCastroBR/CareerOps
+> **Atualizado**: 2026-10-28
 
 ---
 
-## 📍 Status Atual: Fase 9 — Pré-filtro & Matching orientado ao perfil (CONCLUÍDA)
+## 📍 Status Atual: Fase 9 concluída + dashboard profissional, scheduler e workflows versionados entregues
 
 O pipeline passou a usar o `profile.yaml` como fonte de verdade para **filtrar e pontuar** as vagas:
 
@@ -25,8 +25,8 @@ Tudo com **testes unitários (124)**.
 ### Fase 0 — Prova de Conceito (pré-repo)
 - [x] Script Python inicial (`main.py`) varrendo países hardcoded via JobSpy (LinkedIn + Indeed)
 - [x] Filtros regex locais (blocklist título/descrição) + anti-duplicidade (`vagas_processadas.txt`)
-- [x] Envio para n8n via webhook (`careerops-jobs`), rate-limit 2.5s
-- [x] n8n workflows: `careerops-jobs`, `careerops-digest`, `careerops-curriculo`
+- [x] Envio para n8n via webhook (`/webhook/careerops-jobs`), rate-limit 2.5s
+- [x] n8n workflows: `careerops-n8n`, `careerops-digest`, `careerops-curriculo`
 - [x] Stack Docker (n8n + collector)
 
 ### Fase 1 — Primeira Estruturação & Agendamento (commit `b8d7ec7`)
@@ -100,9 +100,9 @@ Tudo com **testes unitários (124)**.
 ## 🔧 Arquitetura Atual
 
 ```
-cron (horários)
-   └─> run_careerops.sh (wrapper)
-         └─> main.py
+scheduler (container, config.json → schedule)
+   └─> main.py  (run_careerops.sh = exec manual)
+
                ├─ carrega/valida profile.yaml (profile.py)   [observabilidade]
                ├─ fontes:
                │    ├─ JobSpy: LinkedIn + Indeed
@@ -114,7 +114,7 @@ cron (horários)
                └─ POST 1 vaga/request → n8n (IA + `final = max(IA, det)`) → Sheets/Telegram
 ```
 
-**Princípio-chave**: Código = lógica. Config = intenção (por usuário, gitignored). Perfil = fonte de verdade do candidato (`profile.yaml`).
+**Princípio-chave**: Código = lógica. Config = intenção (versionado; revise alvos pessoais). Perfil = fonte de verdade do candidato (`profile.yaml`).
 
 ---
 
@@ -126,7 +126,7 @@ cron (horários)
 - [ ] **Cron para `discover_inhire.sh`** (atualização automática de empresas)
 - [ ] **Nó Code no n8n** para preencher `OBS`/`SKILLS` a partir do `det_rationale` quando a IA vier vazia
 - [ ] **Validação de schema** do `config.json` (jsonschema) com mensagens claras
-- [ ] **Metrics endpoint**: vagas/dia, funil (coleta → pré-filtro → IA → aprovadas), distribuição de scores
+- [x] **Metrics**: dashboard expõe funil (coleta → pré-filtro → IA → aprovadas) e distribuição de scores (`/api/funnel`, `/api/overview`)
 - [ ] **Alertas de watchdog**: cron parado > 4h
 
 ### Fase 11 — Auto-apply & Enriquecimento
@@ -140,6 +140,8 @@ cron (horários)
 - [ ] **CI**: lint + test em PR (GitHub Actions)
 - [ ] **Setup wizard**: `careerops init` (config.json + .env + profile.yaml interativos)
 - [x] **Dashboard web** profissional (Visão geral, Vagas, Analisadas, Config, Perfil, Agenda, Workflows, Segredos)
+- [x] **Workflows versionados** em `n8n/workflows/` + `n8n-sync` (auto-import quando banco vazio)
+- [x] **Scheduler no container** (`config.json → schedule`, sem cron)
 - [ ] **Mais fontes**: Greenhouse, Lever, Hacker News, Wellfound
 
 ---
@@ -148,14 +150,14 @@ cron (horários)
 - Taxa de falsos positivos (vaga irrelevante aprovada): < 10%
 - Redução de chamadas de IA via pré-filtro: ≥ 50%
 - Cobertura de testes: config/filtro/dedup/perfil/InHire/pré-filtro/scorer (hoje: 124 testes unitários)
-- Uptime do pipeline: > 99% (cron + container)
+- Uptime do pipeline: > 99% (scheduler no container)
 
 ---
 
 ## 🗒 Notas de Implementação
 - **Commits**: Fase 0-5 (`b8d7ec7` → `8d167b0`) + Fase 6 (Gupy/Workday) + Fase 7 (filtro/dedup/perfil) + Fase 8 (InHire) + Fase 9 (pré-filtro/contexto/scorer)
 - **Arquivos versionados**: inclui `config.json`, `profile.yaml`, `data/inhire_companies.json`, `data/inhire_seed.txt`, `n8n/workflows/*.json` (sem `.env`, `secrets/`, `vagas_processadas.txt`, `logs/`, `data/telemetry/`)
-- **Stack**: Python 3.12 (uv), JobSpy, httpx[http2], PyYAML, n8n (Docker), IA (OpenAI/DeepSeek), Google Sheets, Telegram, Cron
+- **Stack**: Python 3.12 (uv), JobSpy, httpx[http2], PyYAML, n8n (Docker), IA (OpenAI/DeepSeek), Google Sheets, Telegram, scheduler (container)
 - **Fontes de vagas**: LinkedIn + Indeed (JobSpy), Gupy (Itaú/Sicredi/BMG), Workday (Santander), **InHire (164 tenants)**
 - **Testes**: `uv run --project . python -m unittest discover -s tests` (124 testes; `tests/` versionado)
 - **Padrão de branch**: `master` direto (repo pessoal/privado)

@@ -12,11 +12,11 @@ Automatiza a procura de emprego para perfis tech (SRE, DevOps, Cloud, Platform, 
 - **Filtra** localmente (blocklist, deduplicação normalizada, modalidade — aceita remoto/híbrido no BR, descarta presencial) e aplica um **pré-filtro determinístico por título** (corta funções fora do perfil antes da IA)
 - **Perfil estruturado** (`profile.yaml`) como fonte única de verdade (níveis de experiência, objetivos, preferências); gera um `profile_context` e um **score determinístico** (`det_score`) enviados por vaga
 - **Analisa** com IA (OpenAI/DeepSeek) comparando vaga vs seu currículo
-- **Roteia** pelo score final `max(IA, det)` (via workflow `careerops-jobs`):
-  - Score > 71 → **Google Sheets (aba Candidatar) + Telegram** (notificação)
-  - Score ≤ 71 → **Google Sheets (aba Auditoria)** (registrada, não descartada)
+- **Roteia** pelo score final `max(IA, det)` (via workflow `careerops-n8n`):
+  - Score > 71 → **Google Sheets (aba `Jobs`) + Telegram** (notificação)
+  - Score ≤ 71 → **Google Sheets (aba `Rejected-Jobs`)** (registrada, não descartada)
 - **Resumo diário** (via workflow `careerops-digest`, separado): 1 mensagem Telegram consolidada
-- **Agenda**: Cron multi-país/horário, resiliente a desligamento (catch-up manual)
+- **Agenda**: scheduler no container (`config.json → schedule`), resiliente a desligamento (catch-up)
 
 ---
 
@@ -26,26 +26,23 @@ Automatiza a procura de emprego para perfis tech (SRE, DevOps, Cloud, Platform, 
 
 ```mermaid
 flowchart TD
-    subgraph Sched["Cron Scheduler (Linux)"]
-        C1[Brazil 06/11/16/21h] --> C2[NL/DE/CA 08h]
-        C2 --> C3[IE/UK/PL/CH 09h]
-        C3 --> C4[Worldwide 23h]
-        C5["--all / --countries lista"]
+    subgraph Sched["Scheduler (container, config.json → schedule)"]
+        S1["times 06/09/12/15/18/21 (BR)"] --> S2["digest_at 21:00"]
     end
 
     subgraph CLI["Python CLI (main.py)"]
-        W[run_careerops.sh wrapper] --> P[JobSpy: LinkedIn+Indeed]
+        W[run_careerops.sh / scheduler] --> P[JobSpy: LinkedIn+Indeed]
         W --> BK[banks.py: Gupy/Workday]
         W --> IH[inhire.py: portais InHire]
         PR[profile.yaml → profile.py] -.valida.-> F
-        P --> F[Blocklist + Dedup + Modalidade]
+        P --> F[Blocklist + Dedup + Modalidade + Pré-filtro]
         BK --> F
         IH --> F
         F --> POST[POST n8n webhook]
     end
 
     subgraph N8N["n8n Workflows (Docker)"]
-        J[careerops-jobs] --> IA[IA: score 0-100]
+        J[careerops-n8n] --> IA[IA: score 0-100]
         IA --> R{Score > 71?}
         D[careerops-digest] --> TG2[Telegram Daily]
         CU[careerops-curriculo] --> OB[Obsidian PT/EN]
@@ -53,9 +50,9 @@ flowchart TD
 
     Sched --> CLI
     CLI --> J
-    R -->|Sim| SH[Google Sheets: Candidatar]
+    R -->|Sim| SH[Google Sheets: Jobs]
     R -->|Sim| TG1[Telegram: Vaga Aprovada]
-    R -->|Não| AU[Google Sheets: Auditoria]
+    R -->|Não| AU[Google Sheets: Rejected-Jobs]
     D --> TG2
 ```
 
@@ -67,11 +64,11 @@ flowchart TD
 
 | Fase | Componente | Função |
 |------|-----------|--------|
-| **A: Coleta** | `main.py` + `jobspy.py` + `banks.py` + `inhire.py` | LinkedIn/Indeed (query OR, `results_per_country`) + bancos BR (Gupy/Workday) + portais InHire (de `data/inhire_companies.json`) |
+| **A: Coleta** | `main.py` + `jobspy.py` + `banks.py` + `inhire.py` | LinkedIn/Indeed (query OR, `results_per_source`) + bancos BR (Gupy/Workday) + portais InHire (de `data/inhire_companies.json`) |
 | **B: Filtragem** | `main.py` + `filters.py` + `dedup.py` + `prefilter.py` | Blocklist (título/descrição/empresa), modalidade BR (remoto/híbrido sim, presencial não), dedup (URL + empresa/título/local) e **pré-filtro por título** (regras do perfil) |
 | **C: Perfil & Score** | `profile.py` + `profile.yaml` + `scoring.py` | Carrega/valida o perfil, monta o `profile_context` e calcula o `det_score` determinístico — enviados no payload |
 | **D: Envio** | `run_careerops.sh` | POST webhook n8n, rate-limit 2.5s, digest flag |
-| **E: Orquestração** | n8n (`careerops-jobs`) | IA (DeepSeek/OpenAI) → `final = max(IA, det)` → Sheets (Candidatar >71 / Auditoria ≤71) |
+| **E: Orquestração** | n8n (`careerops-n8n`) | IA (DeepSeek/OpenAI) → `final = max(IA, det)` → Sheets (Jobs >71 / Rejected-Jobs ≤71) |
 | **F: Digest** | n8n (`careerops-digest`) | Consolida dia → 1 msg Telegram (21h BR) |
 | **G: Currículo** | n8n (`careerops-curriculo`) | Google Docs PT/EN → IA → Obsidian → Telegram |
 
@@ -81,12 +78,12 @@ flowchart TD
 
 ```bash
 # 1. Clone
-git clone git@github.com:SEU_USUARIO/CareerOps.git
+git clone git@github.com:JPCastroBR/CareerOps.git
 cd CareerOps
 
 # 2. Configure credenciais (copie e edite)
 cp .env.example .env
-# Edite .env com suas chaves: OPENAI_API_KEY, TELEGRAM_BOT_TOKEN, etc.
+# Edite .env com seus tokens do Telegram (IA e Google configuram-se na UI do n8n)
 
 # 3. Google Service Account
 # Coloque o JSON em secrets/google-sa.json (não versionado)
@@ -109,21 +106,12 @@ docker exec careerops-collector uv run python -m careerops.main --country Brazil
 ### 1. Variáveis de Ambiente (`.env`)
 
 ```bash
-# IA (OpenAI ou OpenRouter)
-OPENAI_API_KEY=sk-...
-# ou
-OPENROUTER_API_KEY=sk-or-...
-
-# Telegram (bot + chat onde recebe alertas/digest)
+# Telegram — tokens injetados no n8n (digest + currículo)
 TELEGRAM_BOT_TOKEN=123456:ABC...
-TELEGRAM_CURRICULO_BOT_TOKEN=123456:ABC...   # bot do workflow de currículo (opcional)
-TELEGRAM_CHAT_ID=123456789
-
-# n8n (para gestão remota de workflows)
-N8N_API_KEY=eyJhbGciOi...
+TELEGRAM_CURRICULO_BOT_TOKEN=123456:ABC...
 ```
 
-> **Nunca commite `.env`** — está no `.gitignore`.
+> **Nunca commite `.env`** — está no `.gitignore`. IA (OpenAI/DeepSeek) e Google Service Account são configurados na **UI do n8n** (não via `.env`).
 
 ### 2. Google Service Account
 
@@ -152,23 +140,22 @@ O n8n lê dois Google Docs (PT + EN). Configure os IDs no workflow `careerops-cu
 ### Estrutura (`config.json`)
 ```json
 {
-  "_comment": "All keys optional. English canonical country names.",
-  "search_query": "\"Site Reliability Engineer\" OR \"SRE\" OR \"DevOps\"",
-  "results_per_country": 200,
+  "search_query": "(SRE OR \"Site Reliability\" OR \"DevOps Engineer\" OR \"Platform Engineer\" OR \"Cloud Engineer\") AND (infrastructure OR cloud OR automation OR Terraform OR Kubernetes OR Docker) NOT (...)",
+  "results_per_source": 500,
   "targets": [
-    { "country": "Brazil", "work_mode": "remote" },
-    { "country": "Netherlands", "work_mode": "any" },
-    { "country": "Germany", "work_mode": "onsite" },
-    { "country": "worldwide", "work_mode": "remote" }
+    { "country": "Brazil", "work_mode": "any" }
   ],
-  "title_blocklist": ["junior", "intern", "manager"],
+  "work_modes": ["remote", "hybrid"],
+  "title_blocklist": ["junior", "intern", "manager", "qa", "suporte", "sales"],
   "company_blocklist": ["jobgether", "quik hire staffing", "lensa"],
-  "brazil_remote_only": true,
   "banks": [
-    { "name": "Itaú", "subdomain": "vemproitau", "source": "gupy" }
+    { "name": "Itaú", "subdomain": "vemproitau", "source": "gupy" },
+    { "name": "Santander", "subdomain": "santander.wd3.myworkdayjobs.com", "source": "workday", "workday": { "tenant": "santander", "site": "SantanderCareers" } }
   ],
-  "bank_results_per_bank": 50,
-  "bank_include_keywords": ["sre", "devops", "cloud"]
+  "bank_results_per_bank": 250,
+  "bank_include_keywords": ["sre", "reliability", "devops", "platform", "infrastructure", "cloud"],
+  "inhire": { "enabled": true, "companies_file": "data/inhire_companies.json", "results_per_company": 30 },
+  "schedule": { "enabled": true, "timezone": "America/Sao_Paulo", "times": ["06:00","09:00","12:00","15:00","18:00","21:00"], "digest_at": "21:00", "misfire_grace_minutes": 30 }
 }
 ```
 
@@ -182,10 +169,6 @@ O n8n lê dois Google Docs (PT + EN). Configure os IDs no workflow `careerops-cu
 
 ### `title_blocklist`
 Lista de termos (case-insensitive) que descartam a vaga pelo **título**. Se vazia/ausente, usa a `BASE_TITLE_BLOCKLIST` interna (safety net). Para usar **sua** lista, preencha este array.
-
-### `brazil_remote_only`
-- `true` (padrão): descarta vagas do Brasil **presenciais** (filtro extra por regex em location+título). Remoto e híbrido são aceitos.
-- `false`: mantém todas as modalidades do Brasil.
 
 ### `banks` (portais de carreira de bancos brasileiros)
 Além de LinkedIn/Indeed (JobSpy), o pipeline varre portais próprios de bancos **BR** — fontes **Gupy** (`__NEXT_DATA__` do SSR) e **Workday** (API pública `cxs/jobs` + JSON-LD da página). Ideal para vagas SRE/DevOps/Cloud que os bancos só divulgam no portal interno, e para se candidatar **direto no site do banco** (link aponta pra lá).
@@ -217,14 +200,14 @@ Além de LinkedIn/Indeed (JobSpy), o pipeline varre portais próprios de bancos 
 - `bank_include_keywords`: pré-filtro de **título** aplicado ANTES de baixar a página de detalhe (economiza requests em portais com centenas de vagas).
 - `bank_results_per_bank`: teto de detalhes buscados por banco (default `50`).
 - Sem `source` configurado → usa `gupy`. Suporta **Gupy** (Itaú/Sicredi/BMG) e **Workday** (Santander) atualmente; Cornerstone/CSOD exige token anônimo — futura Fase.
-- Rodam apenas em varredura **Brasil/global** e respeitam `brazil_remote_only` (só remoto).
+- Rodam apenas em varredura **Brasil/global** e respeitam `work_modes` (remoto/híbrido).
 
 > **Peculiaridade Workday**: a API `cxs/jobs` rejeita (`HTTP 400`) buscas com `limit ≥ 22`. O adapter usa `limit=20`, aplica um *rate gate* (≤8 req/60s, gap 2.5s) e pausa com backoff se o portal reclamar.
 
 ### `--source` (CLI)
 | Valor | Comportamento |
 |-------|---------------|
-| `all` (padrão) | JobSpy (LinkedIn/Indeed) **+** bancos BR (+ InHire se `inhire.enabled=true`) |
+| `all` (padrão, via `config.scan_sources`) | JobSpy (LinkedIn/Indeed) **+** bancos BR (+ InHire se `inhire.enabled=true`) |
 | `jobspy` | Só LinkedIn/Indeed |
 | `banks` | Só portais de bancos BR (Gupy + Workday) |
 | `inhire` | Só portais **InHire** (`data/inhire_companies.json` ou `inhire.companies`) |
@@ -283,11 +266,9 @@ Quer só **Brasil remoto** + **Portugal remoto** + **worldwide remoto**?
 ```json
 {
   "targets": [
-    { "country": "Brazil", "work_mode": "remote" },
-    { "country": "Portugal", "work_mode": "remote" },
-    { "country": "worldwide", "work_mode": "remote" }
+    { "country": "Brazil", "work_mode": "remote" }
   ],
-  "brazil_remote_only": true
+  "work_modes": ["remote"]
 }
 ```
 Pronto — sem tocar no código.
@@ -304,7 +285,7 @@ docker exec careerops-collector uv run python -m careerops.main --country "Unite
 docker exec careerops-collector uv run python -m careerops.main --country Germany --digest
 ```
 
-**Aliases PT suportados**: `brasil`, `holanda`, `alemanha`, `reino unido`/`uk`/`inglaterra`, `irlanda`, `polonia`, `suica`, `dinamarca`, `noruega`, `suecia`, `austria`, `finlandia`, `franca`, `canada`, `mundo`/`global`.
+**Aliases PT suportados**: `brasil`/`brazil`, `holanda`/`netherlands`, `alemanha`, `reino unido`/`uk`/`inglaterra`, `irlanda`, `polonia`/`polônia`, `suica`/`swiss`, `luxemburgo`, `dinamarca`, `noruega`, `suecia`/`suécia`, `austria`/`áustria`, `finlandia`/`finlândia`, `franca`/`frança`, `canada`, `mundo`/`global` (lista completa em `main.py → ALIASES`).
 
 ### Opção B: Agendamento Automático (container `scheduler`, sem cron)
 
@@ -346,7 +327,7 @@ No **`config.json`** (não no código), cada `target` aceita `work_mode`:
 ]
 ```
 
-- **Brasil**: além do `work_mode`, há o flag `brazil_remote_only: true` que descarta **presencial** por regex (location + título), mantendo remoto e híbrido.
+- **Brasil**: a modalidade é governada por `work_modes` — remoto e híbrido aceitos, presencial descartado.
 
 ---
 
@@ -370,11 +351,13 @@ No **`config.json`** (não no código), cada `target` aceita `work_mode`:
 | **Cloud Architect** | `"Cloud Architect" OR "Solutions Architect" OR "AWS Architect"` |
 | **Full Stack** | `"Full Stack" OR "Fullstack" OR "React" AND "Node"` |
 
-### Resultados por País (parâmetro `results_per_country` em `config.json`)
+### Resultados por fonte (`results_per_source` em `config.json`)
 
 ```json
-"results_per_country": 200
+"results_per_source": 500
 ```
+
+Sobrepõe os limites antigos por país/banco/empresa. `results_per_country` continua aceito como legado.
 
 ---
 
@@ -393,8 +376,8 @@ Tudo que muda de pessoa para pessoa está no `config.json` (o `profile.yaml` cob
 | `targets` | países + `work_mode` |
 | `title_blocklist` / `company_blocklist` | filtros de ruído |
 | `work_modes` | modalidades habilitadas: `remote`, `hybrid`, `local` |
-| `scan_sources` | fontes do comando de busca: `linkedin`, `indeed`, `gupy`, `workday`, `inhire`, `other` |
-| `other_sources` | fontes em avaliação (não executadas) |
+| `scan_sources` | fontes do comando de busca: `linkedin`, `indeed`, `gupy`, `workday`, `inhire` |
+| `other_sources` | reservado — não é lido pelo código |
 | `schedule` | horários (scheduler no container) |
 | `profile.yaml` | currículo, skills por nível, cargos-alvo |
 
@@ -410,7 +393,7 @@ Controla quais modalidades entram na busca e no resultado final:
 
 - `remote` → vagas remotas; `hybrid` → híbridas; `local` → presenciais.
 - Vazio/ausente ou com as três → não filtra.
-- Substitui o antigo `brazil_remote_only` (removido).
+- Substitui o antigo `brazil_remote_only` (ainda aceito, mas ignorado quando `work_modes` existe).
 - Vagas de modalidade **desconhecida** são preservadas (conservador).
 - No dashboard, edite pela aba **Config → Guiado → Modalidades habilitadas**.
 
@@ -418,22 +401,15 @@ Controla quais modalidades entram na busca e no resultado final:
 
 ## 🛡 Personalizando Filtros (Blocklist)
 
-### Títulos (remove cargos fora do escopo)
-```python
-# src/careerops/main.py → palavras_proibidas_titulo
-palavras_proibidas_titulo = [
-    "estágio", "junior", "jr", "pleno", "mid-level",
-    "qa", "tester", "test automation", "quality engineer",
-    "suporte", "service desk", "support", "helpdesk",
-    "backend", "frontend", "fullstack", "software engineer",
-    "data scientist", "mlops", "ai engineer",
-    "sap", "sales", "manager", "director",
-    # adicione seus termos
-]
+### Títulos (`title_blocklist` no `config.json`)
+```json
+"title_blocklist": ["junior", "intern", "manager", "qa", "suporte", "sales", "frontend", "data scientist", "sap"]
 ```
+Match por substring, case-insensitive, no campo título. Se vazio/ausente, usa a `BASE_TITLE_BLOCKLIST` interna.
 
 ### Descrições (barreiras: visto, idioma, clearance)
 ```python
+# src/careerops/main.py → palavras_proibidas_descricao
 palavras_proibidas_descricao = [
     "no visa sponsorship", "must have right to work",
     "fluent in german", "b2 deutsch", "c1 deutsch",
@@ -441,7 +417,6 @@ palavras_proibidas_descricao = [
     "fluent in dutch", "vloeiend nederlands",
     "security clearance", "clearance",
     "werkstudent", "alternance", "internship",
-    # adicione seus termos
 ]
 ```
 
@@ -451,8 +426,6 @@ Bloqueia vagas de empresas listadas **antes** de enviar ao n8n/IA (economiza cha
 "company_blocklist": ["jobgether", "quik hire staffing", "lensa", "grabjobs", "jobrapido"]
 ```
 *Default seguro em `main.py` já traz esse pequeno conjunto; `config.json` sobrescreve se presente.*
-
-> **Dica**: Mantenha listas em arquivo separado (`config/blocklist.yaml`) e carregue no `main.py` para versionar mudanças.
 
 ---
 
@@ -465,9 +438,9 @@ Dashboard web leve (stdlib, sem deps extras) ao lado do n8n:
 - **Identidade visual**: redesign dark navy profissional, sistema de tokens, cards elevados, KPIs com ícones SVG, tipografia Inter e tabelas consistentes — sem libs novas (stdlib + vanilla JS/CSS).
 - **Status de execução**: chip no header e painel **Status operacional** na Visão geral (status, execução, fonte, atualizado, início, erro); sem popup flutuante.
 - **Visão geral**: 6 KPIs com percentuais reais, funil (pegas, compatíveis, rejeitadas, entrevistas), donut, faixas de score 70–80/80–90/90–100, plataformas, evolução temporal e vagas vistas com link, colunas **Enviada (n8n)**, **Enviado em**, **Analisada (IA)** e botão **Reenviar**.
-- **Vagas/Analisadas**: títulos são links diretos para a vaga (mesmo comportamento da Visão geral); tabelas responsivas escondem colunas menos críticas no mobile.
+- **Vagas/Analisadas**: títulos são links diretos para a vaga (mesmo comportamento da Visão geral), com **paginação** (25/página); tabelas responsivas escondem colunas menos críticas no mobile.
 - **Rodapé**: assinatura **CareerOps · projeto de CareerOps** com link para o repositório oficial.
-- **Analisadas**: tabela + CSV `data/telemetry/jobs_analyzed.csv` (data, empresa, título, local, fonte, score, URL) com download.
+- **Analisadas**: tabela + CSV `data/telemetry/jobs_analyzed.csv` (data, empresa, título, local, fonte, score) com download.
 - **Configuração**: seções numeradas — **1. Busca**, **2. Países e modalidades**, **3. Fontes**, **4. Filtros** — com **fontes por plataforma** (LinkedIn, Indeed, Gupy, Workday, InHire, Outros), **detecção por domínio** (inclui outras plataformas) e grupos por plataforma com **habilitar/desabilitar**, domínio, filtro e edição
 - **Perfil**: **1. Objetivo**, **2. Experiência** (cards com atividades e **tecnologias**, add/remover), **3. Competências** (grupos **hard/soft** definidos por você; skill com **grupo + nível** obrigatórios, evidências/limitações/observação opcionais, sem `source`, ordem alfabética), **4. Preferências de vaga** + **Outros campos** e prévia YAML; lista InHire editável em Configuração
 - **Planilha (Google Sheets)**: lê `Jobsearch-spy` (`Jobs`, `Rejected-Jobs`) via service account — cards, distribuição de score, **filtro por período (hoje/3/7/30 dias)**, busca, badges e colunas **Skills** e **OBS (IA)** (Salário removido: dado pessoal)
@@ -491,16 +464,19 @@ Credenciais do Sheets (gitignored): `secrets/google-sa.json` (service account) e
 
 ### Agenda — fonte única de horários
 
-Os horários vivem em `config.json → schedule` (não mais no script de cron):
+Os horários vivem em `config.json → schedule` (fonte única):
 
 ```json
 "schedule": {
+  "enabled": true,
   "timezone": "America/Sao_Paulo",
-  "jobs": [{"time": "06:00"}, {"time": "21:00", "digest": true}]
+  "times": ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00"],
+  "digest_at": "21:00",
+  "misfire_grace_minutes": 30
 }
 ```
 
-Aplicar no cron: `scripts/install_cron_jobs.sh install` (`render`/`remove`/`list` também). Cada job aceita `country` (opcional) e `digest` (só um por dia).
+O container `scheduler` lê e dispara sozinho. O formato legado `jobs: [{time, digest}]` ainda é aceito. Cron do SO é opcional/legado: `scripts/install_cron_jobs.sh install` (`render`/`remove`/`list`).
 
 ---
 
@@ -524,22 +500,23 @@ Os fluxos do n8n ficam em **`n8n/workflows/*.json`** (um arquivo por workflow). 
 
 > O `Score` gravado é o **final** = `max(IA, det_score)`. A IA segue como avaliadora principal; o `det_score` (determinístico, orientado ao perfil) garante piso quando a IA subestima uma vaga-alvo ou retorna vazia.
 
-### Google Sheets — aba "Candidatar" (Score > 71)
-Planilha: **"CareerOps - Candidaturas"**
+### Google Sheets — aba `Jobs` (Score > 71)
+Planilha: **"Jobsearch-spy"** (aba `Jobs`)
 | Coluna | Exemplo |
 |--------|---------|
-| Data/Hora | 2026-08-08 14:30 |
+| Data | 2026-08-08 |
 | Empresa | Nubank |
-| Vaga | Senior SRE |
-| Link | linkedin.com/jobs/123 |
+| Título | Senior SRE |
 | Score | 87 |
-| Skills Match | AWS, Terraform, K8s |
-| Missing | GCP, ArgoCD |
-| Status | Pronto para Candidatar |
-| Ações | (manual) |
+| Aplicar | Sim |
+| Entrevista | aguardando |
+| Remota | Sim |
+| Local | São Paulo |
+| Skills | AWS, Terraform, K8s |
+| OBS (IA) | resumo da IA |
 
-### Google Sheets — aba "Auditoria" (Score ≤ 71)
-Mesma planilha, aba separada. **Toda** vaga avaliada é registrada aqui (não descartada) — serve para auditoria, aprendizado de padrões e evolução do filtro.
+### Google Sheets — aba `Rejected-Jobs` (Score ≤ 71)
+Mesma planilha `Jobsearch-spy`, aba separada. **Toda** vaga avaliada é registrada aqui (não descartada) — serve para auditoria, aprendizado de padrões e evolução do filtro.
 
 ### Telegram (Vagas Aprovadas + Digest)
 - **Vaga aprovada** (score > 71): notificação individual com score + skills match/missing
@@ -551,39 +528,48 @@ Mesma planilha, aba separada. **Toda** vaga avaliada é registrada aqui (não de
 
 ```
 CareerOps/
-├── .env.example           # Template de variáveis
+├── .env.example           # Template (só TELEGRAM_BOT_TOKEN + CURRICULO)
 ├── .gitignore
-├── docker-compose.yml     # n8n + collector
+├── docker-compose.yml     # n8n + app + n8n-sync + dashboard + scheduler
 ├── pyproject.toml         # Deps Python (uv)
+├── config.json            # VERSIONADO — países, query, blocklist, schedule
+├── profile.yaml           # Perfil profissional estruturado (fonte única de verdade)
 ├── scripts/
-│   ├── install_cron_jobs.sh  # Gerenciador cron (EDITAR SCHEDULES)
-│   ├── run_careerops.sh      # Wrapper por país (log por país/data)
+│   ├── install_cron_jobs.sh  # Cron legado (delega p/ careerops.schedule)
+│   ├── run_careerops.sh      # Wrapper exec manual (log por país/data)
 │   ├── discover_inhire.sh    # Descobre/valida tenants InHire (crt.sh + Wayback)
+│   ├── n8n_sync.sh           # export/import dos workflows n8n
 │   └── run_digest.sh         # Disparo manual digest
+├── n8n/
+│   ├── workflows/*.json      # Workflows versionados (careerops-n8n/-digest/-curriculo)
+│   └── sync_loop.sh          # Loop do n8n-sync (auto-import banco vazio)
 ├── secrets/               # NÃO VERSIONAR (SA Google, Sheets, chaves)
-├── config.json             # NÃO VERSIONAR (config por usuário: países, query, blocklist)
-├── profile.yaml            # Perfil profissional estruturado (fonte única de verdade)
 ├── data/
-│   ├── inhire_companies.json  # Tenants InHire validados (descoberta incremental)
-│   └── inhire_seed.txt        # Slugs semente de empresas InHire
+│   ├── inhire_companies.json  # Tenants InHire validados (164)
+│   ├── inhire_seed.txt        # Slugs semente de empresas InHire
+│   └── telemetry/             # NÃO VERSIONAR (state.json, events, CSV)
 ├── logs/                  # NÃO VERSIONAR
 ├── docs/
 │   └── careerops-flow.html  # Diagrama visual do fluxo (abrir no navegador)
-├── src/
-│   └── careerops/
-│       ├── main.py        # CLI entry (--country, --list, --source, --digest)
-│       ├── profile.py     # Carregador/validador do profile.yaml
-│       └── collector/
-│           ├── jobspy.py      # Wrapper JobSpy
-│           ├── banks.py       # Portais de bancos BR (Gupy + Workday)
-│           ├── inhire.py      # Portais InHire (vagas diretas)
-│           ├── inhire_discovery.py  # Descoberta de tenants (crt.sh + Wayback)
-│           ├── filters.py     # Filtro de localização/modalidade
-│           ├── dedup.py       # Deduplicação normalizada
-│           ├── prefilter.py   # Pré-filtro determinístico por título (perfil)
-│           ├── scoring.py     # Scorer determinístico (det_score) orientado ao perfil
-│           └── parser.py      # Normalização payload
-└── README.md
+├── tests/                 # 124 testes unittest (versionado)
+└── src/careerops/
+    ├── main.py            # CLI entry (--country, --list, --source, --digest)
+    ├── dashboard.py       # UI (stdlib http.server + vanilla JS/CSS)
+    ├── telemetry.py       # state.json / events.jsonl / jobs_analyzed.csv
+    ├── sheets.py          # Leitor Google Sheets (Jobs/Rejected-Jobs/Salario)
+    ├── schedule.py        # Fonte única de horários (config → schedule)
+    ├── scheduler.py       # Container scheduler (loop por horário)
+    ├── profile.py         # Carregador/validador do profile.yaml
+    └── collector/
+        ├── jobspy.py          # Wrapper JobSpy
+        ├── banks.py           # Portais de bancos BR (Gupy + Workday)
+        ├── inhire.py          # Portais InHire (vagas diretas)
+        ├── inhire_discovery.py# Descoberta de tenants (crt.sh + Wayback)
+        ├── filters.py         # Filtro de localização/modalidade
+        ├── dedup.py           # Deduplicação normalizada
+        ├── prefilter.py       # Pré-filtro determinístico por título
+        ├── scoring.py         # Scorer determinístico (det_score)
+        └── parser.py          # Normalização payload
 ```
 
 ---
@@ -591,23 +577,13 @@ CareerOps/
 ## 🐳 Docker Compose (Serviços)
 
 ```yaml
-# docker-compose.yml
+# docker-compose.yml — serviços
 services:
-  n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
-    ports: ["5678:5678"]
-    volumes: ["./n8n-data:/home/node/.n8n"]
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
-
-  collector:
-    build: .
-    command: tail -f /dev/null  # container vivo para exec
-    volumes: [".:/app"]
-    environment:
-      - LINKEDIN_COOKIES=${LINKEDIN_COOKIES}
+  n8n:        # orquestração + IA (localhost:5678)
+  app:        # coletor Python (container careerops-collector)
+  n8n-sync:   # importa/reativa workflows de n8n/workflows/
+  dashboard:  # UI de observabilidade/config (localhost:8080)
+  scheduler:  # agenda do config.json → schedule
 ```
 
 ---
@@ -655,14 +631,10 @@ services:
 uv sync
 
 # Rodar testes (unittest; ver tests/)
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+uv run --project . python -m unittest discover -s tests
 
-# Lint
-uv run ruff check src/
-uv run mypy src/
-
-# Build container
-docker compose build collector
+# Sobe o stack
+docker compose up -d
 ```
 
 ---
@@ -685,8 +657,8 @@ docker compose build collector
 ## 🤝 Contribuindo
 
 1. Fork → branch `feature/xyz`
-2. Adicione testes para novos filtros/fontes (`PYTHONPATH=src python3 -m unittest discover -s tests`)
-3. `uv run ruff check src/`
+2. Adicione testes para novos filtros/fontes (`uv run --project . python -m unittest discover -s tests`)
+3. `docker compose up -d` + valide no dashboard
 4. PR com descrição do que muda e por quê
 
 ---
