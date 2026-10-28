@@ -25,9 +25,6 @@ vagas_processadas.txt
 credentials/
 *.json
 
-# Configuração externa (por usuário, NÃO versionar)
-config.json
-
 # VS Code
 .vscode/
 
@@ -39,4 +36,23 @@ config.json
 .DS_Store
 Thumbs.db
 
-tests/ 
+# Artefatos de transferência (n8n exports / credenciais locais)
+temp/
+tmp/
+
+# Telemetria/dashboard (runtime)
+data/telemetry/
+config.json.bak
+
+# Credenciais locais
+secrets/
+
+# Workflows do n8n (versionados)
+!n8n/workflows/*.json
+
+# estado transitório do n8n-sync
+n8n/import.request
+n8n/import.status
+
+# snapshot de tenants InHire (sem segredos)
+!data/inhire_companies.json

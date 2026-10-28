@@ -59,11 +59,11 @@
 <body>
   <div class="header">
     <h1><span class="pulse"></span> CareerOps — Job Hunting Automation Pipeline</h1>
-    <p>Python (JobSpy) → Guard Rails + IA → Sheets (Candidatar/Auditoria) + Telegram + Digest | Cron scheduler</p>
+    <p>Python (JobSpy + Gupy/Workday + InHire) → filtros + perfil → IA → Sheets (Candidatar/Auditoria) + Telegram + Digest | Cron scheduler</p>
   </div>
 
   <div class="diagram-card">
-    <svg viewBox="0 0 1060 560" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 1060 600" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
           <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
@@ -79,123 +79,124 @@
         </marker>
       </defs>
 
-      <rect width="1060" height="560" fill="url(#grid)"/>
+      <rect width="1060" height="600" fill="url(#grid)"/>
 
       <!-- ===== CRON SCHEDULER (top) ===== -->
-      <text x="530" y="36" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="700">CRON SCHEDULER (Linux) — 12 jobs/day, resilient to shutdown</text>
+      <text x="530" y="34" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="700">CRON SCHEDULER (Linux) — horários; países/work_modes vêm do config.json</text>
 
-      <!-- Country cron chips -->
       <g font-size="9" fill="#e2e8f0" text-anchor="middle">
-        <rect x="40"  y="48" width="120" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
-        <text x="100" y="65">Brazil 06/11/16/21</text>
-        <rect x="180" y="48" width="120" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
-        <text x="240" y="65">NL/DE/CA 08h</text>
-        <rect x="320" y="48" width="120" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
-        <text x="380" y="65">IE/UK/PL/CH 09h</text>
-        <rect x="460" y="48" width="120" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
-        <text x="520" y="65">Worldwide 23h</text>
-        <rect x="600" y="48" width="160" height="28" rx="6" fill="#1e293b" stroke="#94a3b8"/>
-        <text x="680" y="65">+ --all / --countries list</text>
+        <rect x="120" y="46" width="70" height="26" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="155" y="63">06h</text>
+        <rect x="200" y="46" width="70" height="26" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="235" y="63">08h</text>
+        <rect x="280" y="46" width="70" height="26" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="315" y="63">09h</text>
+        <rect x="360" y="46" width="70" height="26" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="395" y="63">11h</text>
+        <rect x="440" y="46" width="70" height="26" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="475" y="63">16h</text>
+        <rect x="520" y="46" width="90" height="26" rx="6" fill="#1e293b" stroke="#fbbf24"/>
+        <text x="565" y="63">21h digest</text>
+        <rect x="620" y="46" width="70" height="26" rx="6" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="655" y="63">23h</text>
+        <rect x="700" y="46" width="240" height="26" rx="6" fill="#1e293b" stroke="#22d3ee"/>
+        <text x="820" y="63">--country / --source jobspy|banks|inhire|all</text>
       </g>
 
-      <!-- Arrow down to wrapper -->
-      <line x1="530" y1="76" x2="530" y2="108" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="530" y1="74" x2="530" y2="100" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
 
       <!-- ===== WRAPPER ===== -->
-      <rect x="360" y="108" width="340" height="44" rx="6" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
-      <rect x="360" y="108" width="340" height="44" rx="6" fill="rgba(8,51,68,0.4)"/>
-      <text x="530" y="128" fill="#e2e8f0" font-size="12" text-anchor="middle" font-weight="700">run_careerops.sh (wrapper)</text>
-      <text x="530" y="143" fill="#94a3b8" font-size="9" text-anchor="middle">idempotent • per-country logs • docker up</text>
+      <rect x="360" y="100" width="340" height="40" rx="6" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+      <rect x="360" y="100" width="340" height="40" rx="6" fill="rgba(8,51,68,0.4)"/>
+      <text x="530" y="118" fill="#e2e8f0" font-size="12" text-anchor="middle" font-weight="700">run_careerops.sh (wrapper)</text>
+      <text x="530" y="132" fill="#94a3b8" font-size="9" text-anchor="middle">idempotent • per-country logs • docker up</text>
 
-      <line x1="530" y1="152" x2="530" y2="184" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="530" y1="140" x2="530" y2="166" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
 
       <!-- ===== PYTHON COLLECTOR ===== -->
-      <rect x="300" y="184" width="460" height="120" rx="6" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
-      <rect x="300" y="184" width="460" height="120" rx="6" fill="rgba(6,78,59,0.4)"/>
-      <text x="530" y="204" fill="#e2e8f0" font-size="12" text-anchor="middle" font-weight="700">Python Collector (main.py)</text>
+      <rect x="270" y="166" width="520" height="172" rx="6" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+      <rect x="270" y="166" width="520" height="172" rx="6" fill="rgba(6,78,59,0.4)"/>
+      <text x="530" y="186" fill="#e2e8f0" font-size="12" text-anchor="middle" font-weight="700">Python Collector (main.py)</text>
 
-      <g font-size="9" fill="#94a3b8" text-anchor="middle">
-        <text x="420" y="226">JobSpy: LinkedIn + Indeed</text>
-        <text x="420" y="240">200 vagas/país • query OR filters</text>
-        <text x="640" y="226">Blocklist regex (title+desc)</text>
-        <text x="640" y="240">Anti-dup: vagas_processadas.txt</text>
-        <text x="640" y="254">BR: discard onsite/hybrid</text>
+      <g font-size="9" fill="#94a3b8" text-anchor="start">
+        <text x="300" y="208" fill="#34d399" font-weight="700">Fontes</text>
+        <text x="300" y="224">• JobSpy — LinkedIn + Indeed</text>
+        <text x="300" y="238">• banks.py — Gupy + Workday</text>
+        <text x="300" y="252">• inhire.py — portais InHire</text>
+        <text x="300" y="266">• profile.yaml → profile.py (valida)</text>
+      </g>
+      <g font-size="9" fill="#94a3b8" text-anchor="start">
+        <text x="600" y="208" fill="#34d399" font-weight="700">Filtros locais</text>
+        <text x="600" y="224">• blocklist (título/desc/empresa)</text>
+        <text x="600" y="238">• dedup: URL + empresa/título/local</text>
+        <text x="600" y="252">• BR: remoto + híbrido ✓</text>
+        <text x="600" y="266">• BR: presencial ✗</text>
       </g>
 
-      <!-- sub boxes -->
-      <rect x="320" y="262" width="200" height="30" rx="4" fill="#0f172a" stroke="#34d399"/>
-      <text x="420" y="281" fill="#e2e8f0" font-size="9" text-anchor="middle">collector/jobspy.py</text>
-      <rect x="540" y="262" width="200" height="30" rx="4" fill="#0f172a" stroke="#34d399"/>
-      <text x="640" y="281" fill="#e2e8f0" font-size="9" text-anchor="middle">filters.py + parser.py</text>
+      <rect x="290" y="288" width="112" height="30" rx="4" fill="#0f172a" stroke="#34d399"/>
+      <text x="346" y="307" fill="#e2e8f0" font-size="9" text-anchor="middle">jobspy.py</text>
+      <rect x="412" y="288" width="112" height="30" rx="4" fill="#0f172a" stroke="#34d399"/>
+      <text x="468" y="307" fill="#e2e8f0" font-size="9" text-anchor="middle">banks.py</text>
+      <rect x="534" y="288" width="132" height="30" rx="4" fill="#0f172a" stroke="#34d399"/>
+      <text x="600" y="307" fill="#e2e8f0" font-size="9" text-anchor="middle">inhire.py + discovery</text>
+      <rect x="676" y="288" width="102" height="30" rx="4" fill="#0f172a" stroke="#34d399"/>
+      <text x="727" y="307" fill="#e2e8f0" font-size="9" text-anchor="middle">filters/dedup</text>
 
       <!-- Arrow to n8n -->
-      <line x1="530" y1="304" x2="530" y2="336" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
-      <text x="545" y="324" fill="#94a3b8" font-size="8">POST /webhook/careerops-jobs</text>
+      <line x1="530" y1="338" x2="530" y2="368" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="545" y="358" fill="#94a3b8" font-size="8">POST /webhook/careerops-jobs (1 vaga/request)</text>
 
       <!-- ===== N8N ===== -->
-      <rect x="270" y="336" width="520" height="150" rx="6" fill="#0f172a" stroke="#fb923c" stroke-width="1.5"/>
-      <rect x="270" y="336" width="520" height="150" rx="6" fill="rgba(251,146,60,0.15)"/>
-      <text x="530" y="356" fill="#e2e8f0" font-size="12" text-anchor="middle" font-weight="700">n8n Workflows (localhost:5678, Docker)</text>
+      <rect x="230" y="368" width="600" height="152" rx="6" fill="#0f172a" stroke="#fb923c" stroke-width="1.5"/>
+      <rect x="230" y="368" width="600" height="152" rx="6" fill="rgba(251,146,60,0.15)"/>
+      <text x="530" y="388" fill="#e2e8f0" font-size="12" text-anchor="middle" font-weight="700">n8n Workflows (localhost:5678, Docker)</text>
 
-      <rect x="290" y="368" width="160" height="34" rx="4" fill="#0f172a" stroke="#fb923c"/>
-      <text x="370" y="389" fill="#e2e8f0" font-size="9" text-anchor="middle">1. careerops-jobs</text>
+      <rect x="250" y="400" width="170" height="32" rx="4" fill="#0f172a" stroke="#fb923c"/>
+      <text x="335" y="420" fill="#e2e8f0" font-size="9" text-anchor="middle">1. careerops-jobs</text>
 
-      <rect x="470" y="368" width="160" height="34" rx="4" fill="#0f172a" stroke="#fb923c"/>
-      <text x="550" y="389" fill="#e2e8f0" font-size="9" text-anchor="middle">2. careerops-digest</text>
+      <rect x="432" y="400" width="160" height="32" rx="4" fill="#0f172a" stroke="#fb923c"/>
+      <text x="512" y="420" fill="#e2e8f0" font-size="9" text-anchor="middle">2. careerops-digest</text>
 
-      <rect x="650" y="368" width="120" height="34" rx="4" fill="#0f172a" stroke="#fb923c"/>
-      <text x="710" y="389" fill="#e2e8f0" font-size="9" text-anchor="middle">3. curriculo</text>
+      <rect x="604" y="400" width="206" height="32" rx="4" fill="#0f172a" stroke="#fb923c"/>
+      <text x="707" y="420" fill="#e2e8f0" font-size="9" text-anchor="middle">3. careerops-curriculo</text>
 
-      <!-- Guard Rails + IA -->
-      <rect x="290" y="412" width="220" height="58" rx="4" fill="#0f172a" stroke="#fb7185"/>
-      <text x="400" y="430" fill="#fb7185" font-size="9" text-anchor="middle" font-weight="700">Guard Rails</text>
-      <text x="400" y="444" fill="#94a3b8" font-size="8" text-anchor="middle">blocklist • dup hash</text>
-      <text x="400" y="456" fill="#94a3b8" font-size="8" text-anchor="middle">salary • phishing • LGPD</text>
+      <!-- Get doc + IA + If -->
+      <rect x="250" y="444" width="170" height="62" rx="4" fill="#0f172a" stroke="#22d3ee"/>
+      <text x="335" y="464" fill="#22d3ee" font-size="9" text-anchor="middle" font-weight="700">Get document</text>
+      <text x="335" y="478" fill="#94a3b8" font-size="8" text-anchor="middle">currículo (Google Docs)</text>
+      <text x="335" y="492" fill="#94a3b8" font-size="8" text-anchor="middle">1x por vaga</text>
 
-      <rect x="530" y="412" width="240" height="58" rx="4" fill="#0f172a" stroke="#a78bfa"/>
-      <text x="650" y="430" fill="#a78bfa" font-size="9" text-anchor="middle" font-weight="700">IA Analysis (OpenAI)</text>
-      <text x="650" y="444" fill="#94a3b8" font-size="8" text-anchor="middle">curriculum + vacancy → score 0-100</text>
-      <text x="650" y="456" fill="#94a3b8" font-size="8" text-anchor="middle">matching / missing / red_flags</text>
+      <rect x="436" y="444" width="200" height="62" rx="4" fill="#0f172a" stroke="#a78bfa"/>
+      <text x="536" y="464" fill="#a78bfa" font-size="9" text-anchor="middle" font-weight="700">IA Analysis (DeepSeek/OpenAI)</text>
+      <text x="536" y="478" fill="#94a3b8" font-size="8" text-anchor="middle">currículo + vaga → score 0-100</text>
+      <text x="536" y="492" fill="#94a3b8" font-size="8" text-anchor="middle">skills / missing / justificativa</text>
 
-      <line x1="400" y1="470" x2="400" y2="492" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrow)"/>
-      <line x1="650" y1="470" x2="650" y2="492" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <rect x="652" y="444" width="158" height="62" rx="4" fill="#0f172a" stroke="#fb7185"/>
+      <text x="731" y="464" fill="#fb7185" font-size="9" text-anchor="middle" font-weight="700">If score &gt; 71</text>
+      <text x="731" y="478" fill="#94a3b8" font-size="8" text-anchor="middle">Sim → Candidatar</text>
+      <text x="731" y="492" fill="#94a3b8" font-size="8" text-anchor="middle">Não → Auditoria</text>
 
-      <!-- ===== OUTPUTS ===== --> 
-      <rect x="200" y="492" width="260" height="50" rx="6" fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
-      <rect x="200" y="492" width="260" height="50" rx="6" fill="rgba(76,29,149,0.4)"/>
-      <text x="330" y="510" fill="#e2e8f0" font-size="10" text-anchor="middle" font-weight="700">Google Sheets</text>
-      <text x="330" y="526" fill="#94a3b8" font-size="8" text-anchor="middle">≥70 → "Candidatar" | <70 → "Auditoria"</text>
+      <line x1="626" y1="475" x2="652" y2="475" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrow-amber)"/>
 
-      <rect x="500" y="492" width="180" height="50" rx="6" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
-      <rect x="500" y="492" width="180" height="50" rx="6" fill="rgba(120,53,15,0.3)"/>
-      <text x="590" y="510" fill="#e2e8f0" font-size="10" text-anchor="middle" font-weight="700">Telegram</text>
-      <text x="590" y="526" fill="#94a3b8" font-size="8" text-anchor="middle">Vagas Aprovadas (≥70)</text>
+      <!-- ===== OUTPUTS ===== -->
+      <line x1="335" y1="506" x2="335" y2="524" stroke="#22d3ee" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="536" y1="506" x2="536" y2="524" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrow-amber)"/>
+      <line x1="731" y1="506" x2="731" y2="524" stroke="#fb7185" stroke-width="1.2" marker-end="url(#arrow-amber)"/>
 
-      <rect x="700" y="492" width="180" height="50" rx="6" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
-      <rect x="700" y="492" width="180" height="50" rx="6" fill="rgba(120,53,15,0.3)"/>
-      <text x="790" y="510" fill="#e2e8f0" font-size="10" text-anchor="middle" font-weight="700">Digest (sep.)</text>
-      <text x="790" y="526" fill="#94a3b8" font-size="8" text-anchor="middle">careerops-digest 21h</text>
+      <rect x="200" y="524" width="290" height="52" rx="6" fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
+      <rect x="200" y="524" width="290" height="52" rx="6" fill="rgba(76,29,149,0.4)"/>
+      <text x="345" y="543" fill="#e2e8f0" font-size="10" text-anchor="middle" font-weight="700">Google Sheets</text>
+      <text x="345" y="559" fill="#94a3b8" font-size="8" text-anchor="middle">&gt;71 → "Candidatar" | ≤71 → "Auditoria"</text>
 
-      <!-- Arrows from IA to outputs -->
-      <line x1="400" y1="470" x2="330" y2="492" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
-      <line x1="650" y1="470" x2="590" y2="492" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
-      <line x1="650" y1="470" x2="790" y2="492" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+      <rect x="510" y="524" width="160" height="52" rx="6" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
+      <rect x="510" y="524" width="160" height="52" rx="6" fill="rgba(120,53,15,0.3)"/>
+      <text x="590" y="543" fill="#e2e8f0" font-size="10" text-anchor="middle" font-weight="700">Telegram</text>
+      <text x="590" y="559" fill="#94a3b8" font-size="8" text-anchor="middle">Vagas aprovadas (&gt;71)</text>
 
-      <!-- Legend -->
-      <g font-size="8" fill="#94a3b8">
-        <rect x="40" y="500" width="12" height="12" rx="2" fill="rgba(8,51,68,0.4)" stroke="#22d3ee"/>
-        <text x="58" y="510">Scheduler/CLI</text>
-        <rect x="40" y="518" width="12" height="12" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399"/>
-        <text x="58" y="528">Python</text>
-        <rect x="170" y="500" width="12" height="12" rx="2" fill="rgba(251,146,60,0.15)" stroke="#fb923c"/>
-        <text x="188" y="510">n8n</text>
-        <rect x="170" y="518" width="12" height="12" rx="2" fill="rgba(76,29,149,0.4)" stroke="#a78bfa"/>
-        <text x="188" y="528">Data/AI</text>
-        <rect x="290" y="500" width="12" height="12" rx="2" fill="rgba(120,53,15,0.3)" stroke="#fbbf24"/>
-        <text x="308" y="510">Notify</text>
-        <rect x="290" y="518" width="12" height="12" rx="2" fill="#0f172a" stroke="#fb7185"/>
-        <text x="308" y="528">Guard Rails</text>
-      </g>
+      <rect x="690" y="524" width="180" height="52" rx="6" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
+      <rect x="690" y="524" width="180" height="52" rx="6" fill="rgba(120,53,15,0.3)"/>
+      <text x="780" y="543" fill="#e2e8f0" font-size="10" text-anchor="middle" font-weight="700">Digest (sep.)</text>
+      <text x="780" y="559" fill="#94a3b8" font-size="8" text-anchor="middle">careerops-digest 21h</text>
     </svg>
   </div>
 
@@ -203,35 +204,36 @@
     <div class="card">
       <div class="card-header"><div class="card-dot cyan"></div><h3>Collection</h3></div>
       <ul>
-        <li>• Cron: 12 jobs/day, multi-country</li>
-        <li>• CLI: --country, --countries, --all</li>
+        <li>• Cron: multi-horário (países via config.json)</li>
+        <li>• CLI: --country, --countries, --all, --source</li>
         <li>• JobSpy: LinkedIn + Indeed</li>
-        <li>• 200 results/country, 48h window</li>
-        <li>• Idempotent + catch-up safe</li>
+        <li>• banks.py: Gupy (Itaú/Sicredi/BMG) + Workday (Santander)</li>
+        <li>• inhire.py: portais InHire (164 tenants) + discovery crt.sh/Wayback</li>
+        <li>• profile.yaml → profile.py (fonte de verdade)</li>
       </ul>
     </div>
     <div class="card">
       <div class="card-header"><div class="card-dot emerald"></div><h3>Filtering &amp; IA</h3></div>
       <ul>
-        <li>• Blocklist regex (title+desc)</li>
-        <li>• Anti-duplicate: vagas_processadas.txt</li>
-        <li>• BR: remote-only enforcement</li>
-        <li>• Guard Rails: salary, phishing, LGPD</li>
-        <li>• OpenAI scores 0-100 vs curriculum</li>
+        <li>• Blocklist (título/descrição/empresa)</li>
+        <li>• Dedup: URL + empresa/título/localização</li>
+        <li>• BR: remoto + híbrido ✓ / presencial ✗</li>
+        <li>• IA (DeepSeek/OpenAI) pontua 0-100 vs currículo</li>
+        <li>• Pré-filtro por título + det_score (final = max(IA, det))</li>
       </ul>
     </div>
     <div class="card">
       <div class="card-header"><div class="card-dot violet"></div><h3>Outputs</h3></div>
       <ul>
-        <li>• Sheets: ≥70 → "Candidatar"</li>
-        <li>• Sheets: <70 → "Auditoria"</li>
+        <li>• Sheets: &gt;71 → "Candidatar"</li>
+        <li>• Sheets: ≤71 → "Auditoria"</li>
         <li>• Telegram: vagas aprovadas</li>
         <li>• Digest (sep.): resumo 21h</li>
-        <li>• Curriculum PT/EN auto-gen</li>
+        <li>• Currículo PT/EN auto-gen (workflow separado)</li>
       </ul>
     </div>
   </div>
 
-  <div class="footer">CareerOps Pipeline — Generated diagram • Open in browser to view</div>
+  <div class="footer">CareerOps Pipeline — diagrama atualizado (Fase 9) • abrir no navegador</div>
 </body>
 </html>

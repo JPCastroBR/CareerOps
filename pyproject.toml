@@ -5,18 +5,22 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "google-auth>=2.0.0",
     "google-genai>=2.11.0",
     "httpx[http2]>=0.28.1",
     "pandas>=2.3.3",
     "python-dotenv>=1.2.2",
     "python-jobspy>=1.1.82",
+    "pyyaml>=6.0",
     "requests>=2.34.2",
     "rich>=15.0.0",
     "sqlalchemy>=2.0.51",
     "typer>=0.26.8",
 ]
 
-[dependency-groups]
-dev = [
-    "pytest>=9.1.1",
-]
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

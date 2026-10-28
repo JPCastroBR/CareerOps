@@ -16,7 +16,7 @@
 # Com país: força varredura isolada (ignora config.json para a escolha do país).
 set -uo pipefail
 
-PROJECT=/home/castro/Projects/CareerOps
+PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOGDIR="$PROJECT/logs"
 mkdir -p "$LOGDIR"
 

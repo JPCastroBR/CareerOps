@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import json
 import re
@@ -8,9 +7,18 @@ import pandas as pd
 import requests
 from careerops.collector.jobspy import fetch_recent_jobs
 from careerops.collector.banks import fetch_bank_jobs
+from careerops.collector.filters import is_brazil_onsite, modality_allowed, normalize_modes
+from careerops.collector.dedup import dedupe_jobs
+from careerops.collector.inhire import fetch_inhire_jobs
+from careerops.collector.prefilter import build_rules, apply_prefilter
+from careerops.collector.scoring import build_scorer
+from careerops.profile import load_profile, build_profile_context, ProfileError
+from careerops import telemetry as tel
 
 ARQUIVO_MEMORIA = "vagas_processadas.txt"
 ARQUIVO_CONFIG = "config.json"
+ARQUIVO_PERFIL = "profile.yaml"
+ARQUIVO_INHIRE = "data/inhire_companies.json"
 
 # ---------------------------------------------------------------------------
 # Aliases: user thinks in Portuguese, JobSpy uses English names.
@@ -39,18 +47,27 @@ ALIASES = {
 # Safe fallback when config.json is absent: search worldwide, remote-only.
 DEFAULT_CONFIG = {
     "search_query": '"Site Reliability Engineer" OR "SRE" OR "Infrastructure Engineer" OR "Cloud Infrastructure" OR "DevOps"',
-    "results_per_country": 200,
+    "results_per_country": 600,
+    "hours_old": 36,
     "targets": [{"country": "worldwide", "work_mode": "remote"}],
     "title_blocklist": [],
     "company_blocklist": [
         "jobgether", "quik hire staffing", "lensa", "grabjobs", "jobrapido",
     ],
-    "brazil_remote_only": True,
-    "inhire": {},
+    "brazil_remote_only": False,
+    "work_modes": ["remote", "hybrid", "local"],
     # Portais de carreira de bancos brasileiros (fonte Gupy e/ou Workday).
     "banks": [],
-    "bank_results_per_bank": 50,
+    "bank_results_per_bank": 100,
     "bank_include_keywords": [],
+    # Portais InHire (vagas diretas). enabled=false => não entra no 'all'.
+    "inhire": {
+        "enabled": False,
+        "companies": [],
+        "companies_file": "data/inhire_companies.json",
+        "results_per_company": 120,
+        "include_keywords": [],
+    },
 }
 
 
@@ -70,6 +87,42 @@ def carregar_config() -> dict:
     except Exception as e:
         print(f"⚠️  Falha ao ler config.json ({e}) — usando fallback seguro.")
         return dict(DEFAULT_CONFIG)
+
+
+def carregar_perfil():
+    """Load profile.yaml for validation/logging only.
+
+    Does NOT change any pipeline decision yet: a missing or invalid profile is
+    non-fatal and simply logs a warning (fail-safe, same as config.json).
+    """
+    try:
+        perfil = load_profile(ARQUIVO_PERFIL)
+    except ProfileError as e:
+        print(f"👤 profile.yaml indisponível ({e}) — seguindo sem perfil estruturado.")
+        return None
+
+    seniority = perfil.get("seniority", {}) or {}
+    primary = (perfil.get("target_roles", {}) or {}).get("primary", []) or []
+    print(f"👤 Perfil carregado: alvo={seniority.get('target', '?')} | "
+          f"cargos-alvo={', '.join(primary) if primary else '?'}")
+    return perfil
+
+
+def carregar_inhire_companies(path=ARQUIVO_INHIRE):
+    """Load InHire tenant slugs from the discovered-companies file."""
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            companies = data.get("companies", []) or []
+            disabled = set(data.get("disabled", []) or [])
+            return [c for c in companies if c not in disabled]
+        return list(data) if isinstance(data, list) else []
+    except Exception as e:
+        print(f"⚠️ Falha ao ler {path}: {e}")
+        return []
 
 
 def parse_args():
@@ -105,12 +158,11 @@ def parse_args():
     )
     parser.add_argument(
         "--source",
-        choices=["jobspy", "banks", "inhire", "all"],
-        default="all",
-        help="Fonte de vagas: 'jobspy' (LinkedIn+Indeed, padrão antigo), "
-             "'banks' (portais de bancos BR via Gupy) ou 'all' (ambos). "
-             "'inhire' habilita o adapter de tenants InHire (portal de carreira "
-             "de empresas). Padrão: all.",
+        choices=["jobspy", "linkedin", "indeed", "banks", "gupy", "workday", "inhire", "all"],
+        default=None,
+        help="Fonte de vagas: 'jobspy' (LinkedIn+Indeed), 'banks' (Gupy/Workday BR), "
+             "'inhire' (portais InHire) ou 'all' (jobspy + banks + InHire se habilitado). "
+             "Sem a flag, usa config.json → scan_sources (padrão: all).",
     )
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -153,22 +205,26 @@ def salvar_na_memoria(url):
 
 
 def main():
-    # Subcomando InHire (Fase 11): `python -m careerops.main inhire <acao>`
-    # Não interfere no parser principal quando não invocado.
-    if len(sys.argv) > 1 and sys.argv[1] == "inhire":
-        return inhire_cli(sys.argv[2:])
-
     args = parse_args()
     cfg = carregar_config()
+    perfil = carregar_perfil()  # valida/loga o perfil; usado pelo pré-filtro (9.1)
+    profile_context = build_profile_context(perfil) if perfil else ""
+    scorer = build_scorer(perfil) if perfil else None
+    tel.start_run("scan", source=args.source, country=args.country_resolved, dry_run=args.dry_run)
 
     query = cfg.get("search_query", DEFAULT_CONFIG["search_query"])
     results_per_country = cfg.get("results_per_country", DEFAULT_CONFIG["results_per_country"])
+    results_per_source = cfg.get("results_per_source")
+    if results_per_source not in (None, "", 0):
+        results_per_country = int(results_per_source)
+    hours_old = int(cfg.get("hours_old", DEFAULT_CONFIG.get("hours_old", 36)))
 
     # Targets from config.json → alvos list; work_mode maps to is_remote:
     #   "remote"  → is_remote=True only
     #   "onsite"  → is_remote=False only
     #   "any"     → both True and False (two entries)
     #   "hybrid"  → treated as onsite+remote (both)
+    work_modes = cfg.get("work_modes")
     raw_targets = cfg.get("targets", DEFAULT_CONFIG["targets"])
     alvos = []
     for t in raw_targets:
@@ -181,13 +237,50 @@ def main():
         else:  # "any" or "hybrid" → both modes
             alvos.append({"pais": pais, "remoto": False})
             alvos.append({"pais": pais, "remoto": True})
+    if work_modes is not None:
+        _modes = normalize_modes(work_modes)
+        _paises: list = []
+        for _t in raw_targets:
+            _p = _t.get("country")
+            if _p and _p not in _paises:
+                _paises.append(_p)
+        alvos = []
+        for _p in _paises:
+            if _modes == {"remote"}:
+                alvos.append({"pais": _p, "remoto": True})
+            elif _modes == {"local"}:
+                alvos.append({"pais": _p, "remoto": False})
+            else:
+                alvos.append({"pais": _p, "remoto": False})
+                alvos.append({"pais": _p, "remoto": True})
+    tel.set_state(targets=[f"{a['pais']}:{'remote' if a['remoto'] else 'onsite'}" for a in alvos])
 
-    brazil_remote_only = cfg.get("brazil_remote_only", True)
+    brazil_remote_only = cfg.get("brazil_remote_only", False)
+    # Quando work_modes existe, as modalidades (remote/hybrid/local) governam.
+    if work_modes is not None:
+        brazil_remote_only = False
     title_blocklist_cfg = cfg.get("title_blocklist", [])
     company_blocklist_cfg = cfg.get("company_blocklist", DEFAULT_CONFIG["company_blocklist"]) or []
-    banks_cfg = cfg.get("banks", DEFAULT_CONFIG["banks"]) or []
+    banks_all = [
+        b for b in (cfg.get("banks", DEFAULT_CONFIG["banks"]) or [])
+        if b.get("enabled", True) is not False
+    ]
     bank_results = cfg.get("bank_results_per_bank", DEFAULT_CONFIG["bank_results_per_bank"])
+    if results_per_source not in (None, "", 0):
+        bank_results = int(results_per_source)
     bank_include = cfg.get("bank_include_keywords", DEFAULT_CONFIG["bank_include_keywords"]) or []
+
+    # Portais InHire (vagas diretas). Lista de empresas vem do config ou do
+    # arquivo descoberto por `careerops.collector.inhire_discovery`.
+    inhire_cfg = cfg.get("inhire", DEFAULT_CONFIG["inhire"]) or {}
+    inhire_companies = inhire_cfg.get("companies") or carregar_inhire_companies(
+        inhire_cfg.get("companies_file", ARQUIVO_INHIRE)
+    )
+    inhire_include = inhire_cfg.get("include_keywords") or []
+    inhire_results = inhire_cfg.get("results_per_company", 30)
+    if results_per_source not in (None, "", 0):
+        inhire_results = int(results_per_source)
+    inhire_enabled = bool(inhire_cfg.get("enabled", False))
 
     # Bancos são brasileiros: só fazem sentido numa varredura Brasil/global.
     eh_brasil = (
@@ -195,11 +288,42 @@ def main():
         or (args.countries_resolved and any(c.lower() == "brazil" for c in args.countries_resolved))
         or (not args.country_resolved and not args.countries_resolved)
     )
-    source = args.source
-    run_jobspy = source in ("jobspy", "all")
-    run_banks = source in ("banks", "all") and bool(banks_cfg) and eh_brasil
-    inhire_cfg = cfg.get("inhire", DEFAULT_CONFIG.get("inhire")) or {}
-    run_inhire = (source == "inhire") or (source == "all" and bool(inhire_cfg))
+    scan_sources = cfg.get("scan_sources")
+    if args.source is not None:
+        source = args.source
+        if source in ("jobspy", "all"):
+            jobspy_sites = {"linkedin", "indeed"}
+        elif source in ("linkedin", "indeed"):
+            jobspy_sites = {source}
+        else:
+            jobspy_sites = set()
+        platforms = {"gupy", "workday"} if source in ("banks", "all") else ({source} if source in ("gupy", "workday") else set())
+        run_inhire = (
+            source in ("inhire", "all") and inhire_enabled
+            and bool(inhire_companies) and eh_brasil
+        )
+    elif scan_sources:
+        source = "config"
+        selected = {str(s).strip().lower() for s in scan_sources}
+        if "banks" in selected:
+            selected |= {"gupy", "workday"}
+        if "jobspy" in selected:
+            selected |= {"linkedin", "indeed"}
+        jobspy_sites = selected & {"linkedin", "indeed"}
+        platforms = selected & {"gupy", "workday"}
+        run_inhire = "inhire" in selected and bool(inhire_companies) and eh_brasil
+        print(f"🧭 Fontes (config.scan_sources): {', '.join(sorted(selected)) or '(nenhuma)'}")
+        if "other" in selected:
+            print("⚠️ Outros (em testes): nenhuma fonte implementada ainda — ignorado.")
+    else:
+        source = "all"
+        jobspy_sites = {"linkedin", "indeed"}
+        platforms = {"gupy", "workday"}
+        run_inhire = inhire_enabled and bool(inhire_companies) and eh_brasil
+    run_jobspy = bool(jobspy_sites)
+
+    banks_cfg = [b for b in banks_all if (b.get("source") or "gupy") in platforms]
+    run_banks = bool(banks_cfg) and eh_brasil
 
     # ----------------------------------------------------------------------
     # Filtro por país / países / all (modos de varredura)
@@ -249,9 +373,13 @@ def main():
             print(f"   - {a['pais']} | remoto={a['remoto']}")
         print(f"\nFontes: {source}")
         if run_banks:
-            print("Bancos (Gupy/Workday):")
+            print("Empresas (Gupy/Workday):")
             for b in banks_cfg:
                 print(f"   - {b.get('name', b.get('subdomain'))} ({b.get('subdomain')})")
+        if run_inhire:
+            print(f"InHire ({len(inhire_companies)} portal(is)):")
+            for slug in inhire_companies:
+                print(f"   - {slug}")
         return
 
     # Decisão do digest: country run => off por padrão (evita spam);
@@ -263,23 +391,34 @@ def main():
 
     # 1. Coleta os dados de todos os países, Busca N vagas por país (do config)
     if run_jobspy:
+        tel.source_start("jobspy")
+        n_jobspy = 0
         for alvo in alvos:
             try:
                 jobs_df = fetch_recent_jobs(
                     search_term=query,
                     location=alvo['pais'],
                     is_remote=alvo['remoto'],
-                    results_wanted=results_per_country
+                    results_wanted=results_per_country,
+                    hours_old=hours_old,
+                    sites=sorted(jobspy_sites),
                 )
                 if not jobs_df.empty:
                     todas_vagas.append(jobs_df)
+                    n_jobspy += len(jobs_df)
+                    for _, _r in jobs_df.head(200).iterrows():
+                        tel.job_seen(_r, "jobspy")
             except Exception as e:
                 print(f"❌ Erro ao buscar no(a) {alvo['pais']}: {e}")
+                tel.event("source_error", source="jobspy", error=str(e))
+        tel.source_end("jobspy", n_jobspy)
 
     # 1b. Portais de carreira dos bancos brasileiros (Gupy + Workday).
     #     Já saem filtrados por título relevante + remoto (regra Brasil).
     if run_banks:
-        print(f"\n🏦 Varrendo portais de {len(banks_cfg)} banco(s) brasileiro(s)...")
+        print(f"\n🏢 Varrendo {len(banks_cfg)} empresa(s) via Gupy/Workday...")
+        tel.source_start("banks")
+        banks_df = pd.DataFrame()
         try:
             banks_df = fetch_bank_jobs(
                 banks=banks_cfg,
@@ -289,24 +428,36 @@ def main():
             )
             if not banks_df.empty:
                 todas_vagas.append(banks_df)
+                for _, _r in banks_df.head(300).iterrows():
+                    tel.job_seen(_r, "banks")
         except Exception as e:
             print(f"❌ Erro na varredura de bancos: {e}")
+            tel.event("source_error", source="banks", error=str(e))
+        tel.source_end("banks", len(banks_df))
 
-    # 1c. Adapter InHire (tenants de empresas via portal de carreira próprio).
-    #     Descobre → valida → coleta → faz matching local e deduplica.
+    # 1c. Portais InHire (vagas diretas). Já saem com workplaceType mapeado.
     if run_inhire:
-        print(f"\n🟣 Varrendo tenants InHire (descoberta + validação + coleta)...")
+        print(f"\n🏢 Varrendo {len(inhire_companies)} portal(is) InHire...")
+        tel.source_start("inhire")
+        inhire_df = pd.DataFrame()
         try:
-            from careerops.collector.inhire import fetch_inhire_jobs
-            from careerops.collector.inhire.config import load_config as load_inhire_config
-            inhire_df = fetch_inhire_jobs(cfg=load_inhire_config())
+            inhire_df = fetch_inhire_jobs(
+                companies=inhire_companies,
+                include_keywords=inhire_include,
+                results_per_company=inhire_results,
+            )
             if not inhire_df.empty:
                 todas_vagas.append(inhire_df)
+                for _, _r in inhire_df.head(400).iterrows():
+                    tel.job_seen(_r, "inhire")
         except Exception as e:
             print(f"❌ Erro na varredura InHire: {e}")
+            tel.event("source_error", source="inhire", error=str(e))
+        tel.source_end("inhire", len(inhire_df))
 
     if not todas_vagas:
         print("📭 Nenhuma vaga encontrada na varredura de hoje.")
+        tel.finish("finished", reason="no_jobs")
         return
 
     df_final = pd.concat(todas_vagas, ignore_index=True)
@@ -385,12 +536,14 @@ def main():
     ]
 
     # Aplica o filtro pesado apenas nos títulos
+    total_antes_txt = len(df_final)
     padrao_titulo = '|'.join(re.escape(p) for p in palavras_proibidas_titulo)
     df_final = df_final[~df_final['title'].str.contains(padrao_titulo, case=False, na=False)]
 
     # Aplica o filtro de vistos apenas nas descrições
     padrao_descricao = '|'.join(re.escape(p) for p in palavras_proibidas_descricao)
     df_final = df_final[~df_final['description'].str.contains(padrao_descricao, case=False, na=False)]
+    tel.filtered("title_or_description", total_antes_txt - len(df_final))
 
     # 2b. Blocklist de EMPRESAS (aggregators/spam que não são empregadores reais)
     if company_blocklist_cfg and not df_final.empty:
@@ -401,6 +554,7 @@ def main():
         vagas_empresa = total_antes_emp - len(df_final)
         if vagas_empresa > 0:
             print(f"🚫 Descartadas {vagas_empresa} vagas de empresas bloqueadas (company_blocklist).")
+            tel.filtered("company_blocklist", vagas_empresa)
 
     # 3. Anti-Duplicidade
     vagas_antigas = carregar_memoria()
@@ -408,62 +562,101 @@ def main():
     df_final = df_final[~df_final['job_url'].isin(vagas_antigas)]
     vagas_repetidas = total_antes - len(df_final)
 
+    # 3.1. Dedup do lote: mesma URL e/ou mesma vaga entre fontes
+    #      (empresa + título + localização normalizados).
+    registros = dedupe_jobs(df_final.to_dict('records'))
+    vagas_duplicadas = len(df_final) - len(registros)
+    df_final = pd.DataFrame(registros)
+
     if vagas_repetidas > 0:
         print(f"♻️  Descartadas {vagas_repetidas} vagas antigas já processadas.")
+        tel.filtered("already_processed", vagas_repetidas)
+    if vagas_duplicadas > 0:
+        print(f"🧬 Descartadas {vagas_duplicadas} duplicata(s) no lote "
+              f"(mesma URL ou empresa+título+localização).")
+        tel.filtered("dedupe_batch", vagas_duplicadas)
 
     total_vagas = len(df_final)
     if total_vagas == 0:
         print("🛑 Todas as vagas já foram processadas anteriormente. Nada novo no front!")
+        tel.finish("finished", reason="all_processed")
         return
 
     # =========================================================================
-    # 3b. Filtro BRASIL: remoto + híbrido (presencial puro é descartado)
+    # 3b. Filtro BRASIL: aceita remoto e híbrido, descarta presencial
     # =========================================================================
-    def eh_brasil_presencial(row):
-        loc = str(row.get('location', '') or '')
-        eh_br = bool(re.search(r'brasil|brazil', loc, re.IGNORECASE))
-        if not eh_br:
-            return False
-        is_remote = row.get('is_remote', False)
-        try:
-            is_remote = bool(is_remote)
-        except Exception:
-            is_remote = False
-        texto = ' '.join(str(row.get(c, '') or '') for c in ('title', 'description', 'job_type', 'job_level')).lower()
-        # Híbrido é aceito; só descarta se for explicitamente presencial/onsite
-        indica_presencial_puro = bool(re.search(r'\b(presencial|onsite|on-site|on site)\b', texto))
-        # Se a vaga diz "híbrido" no texto, NÃO é presencial puro (é aceitável)
-        indica_hibrido = bool(re.search(r'\b(h[íi]brido|hybrid)\b', texto))
-        # Presencial puro = não remoto E (indica presencial E NÃO indica híbrido)
-        return (not is_remote) and indica_presencial_puro and not indica_hibrido
-
     antes_br = len(df_final)
     if brazil_remote_only:
-        df_final = df_final[~df_final.apply(eh_brasil_presencial, axis=1)]
+        df_final = df_final[~df_final.apply(is_brazil_onsite, axis=1)]
     descartadas_br = antes_br - len(df_final)
     if descartadas_br > 0:
-        print(f"🇧🇷 Descartadas {descartadas_br} vaga(s) do Brasil presencial pura (remoto + híbrido mantidos).")
+        print(f"🇧🇷 Descartadas {descartadas_br} vaga(s) presenciais do Brasil "
+              f"(remoto e híbrido são aceitos).")
+        tel.filtered("brazil_onsite", descartadas_br)
+
+    if work_modes is not None:
+        _modes = normalize_modes(work_modes)
+        if _modes and len(_modes) < 3:
+            antes_mod = len(df_final)
+            df_final = df_final[df_final.apply(lambda r: modality_allowed(r, _modes), axis=1)]
+            disc_mod = antes_mod - len(df_final)
+            if disc_mod > 0:
+                print(f"🧭 Descartadas {disc_mod} vaga(s) por modalidade "
+                      f"(habilitadas: {', '.join(sorted(_modes))}).")
+                tel.filtered("work_modes", disc_mod)
 
     total_vagas = len(df_final)
     if total_vagas == 0:
-        print("🛑 Nenhuma vaga remoto relevante inédita restante.")
+        print("🛑 Nenhuma vaga remoto/híbrido relevante inédita restante.")
+        tel.finish("finished", reason="no_relevant_after_br")
         return
 
-    print(f"\n✅ Sobraram {total_vagas} vagas INÉDITAS (remoto).\n")
+    # =========================================================================
+    # 3c. Pré-filtro determinístico por título (Fase 9.1)
+    #     Regras em profile.yaml (title_matching). Conservador: só descarta
+    #     função claramente fora do perfil; títulos ambíguos são preservados.
+    # =========================================================================
+    if perfil is not None:
+        rules = build_rules(perfil)
+        df_final, pre_stats = apply_prefilter(df_final, rules)
+        print(f"\n🎯 Pré-filtro por título: mantidas={pre_stats['kept']} | "
+              f"descartadas={pre_stats['discarded']} | ambíguas={pre_stats['ambiguous']}")
+        for reason, count in sorted(pre_stats["by_reason"].items()):
+            print(f"   - {reason}: {count}")
+        tel.filtered("prefilter_title", pre_stats["discarded"], ambiguous=pre_stats["ambiguous"])
+    else:
+        print("\n🎯 Pré-filtro por título: ignorado (profile.yaml indisponível).")
+
+    total_vagas = len(df_final)
+    if total_vagas == 0:
+        print("🛑 Nenhuma vaga relevante restante após o pré-filtro.")
+        tel.finish("finished", reason="no_relevant_after_prefilter")
+        return
+
+    print(f"\n✅ Sobraram {total_vagas} vagas INÉDITAS (remoto/híbrido).\n")
     print("-" * 60)
 
     # --dry-run: mostra o que seria enviado e encerra (sem n8n/memória/digest)
     if args.dry_run:
         for index, row in df_final.iterrows():
             print(f"📦 [{row.get('location', '')}] {row.get('company', '')} - {row.get('title', '')}")
+            tel.job_analyzed(row, status="dry_run")
         print("-" * 60)
         print("🧪 MODO DRY-RUN: nada foi enviado ao n8n, memória não alterada, digest não disparado.")
+        tel.finish("finished", reason="dry_run", total=total_vagas)
         return
 
     sucesso = 0
     # 4. Envio para Orquestração no n8n
     for index, row in df_final.iterrows():
         payload = row.to_dict()
+        # Contexto compacto do perfil (Fase 9.2) — complementa o currículo.
+        payload["profile_context"] = profile_context
+        # Score determinístico por perfil (Fase 9.3) — enviado como complemento.
+        if scorer is not None:
+            det = scorer.score(row)
+            payload["det_score"] = det.score
+            payload["det_rationale"] = det.rationale
         titulo = row.get('title', 'Desconhecido')
         empresa = row.get('company', 'Desconhecida')
         local = row.get('location', 'Global')
@@ -478,11 +671,15 @@ def main():
                 sucesso += 1
                 if url_vaga:
                     salvar_na_memoria(url_vaga)
+                tel.job_analyzed(row, det_score=payload.get("det_score"), status="sent")
+                tel.record_sent(payload)
             else:
                 print(f"   ↳ ❌ Erro HTTP {response.status_code}")
+                tel.event("send_error", company=empresa, title=titulo, status_code=response.status_code)
 
         except Exception as e:
             print(f"   ↳ ❌ Falha de Conexão: {e}")
+            tel.event("send_error", company=empresa, title=titulo, error=str(e))
 
         # ◄ FREIO ABS ATIVADO (Protege o Google Sheets contra o Erro 429)
         time.sleep(2.5)
@@ -512,6 +709,8 @@ def main():
     else:
         print("📲 Digest não disparado nesta execução (use --digest para forçar).")
 
+    tel.finish("finished", sent=sucesso, total=total_vagas)
+
 
 def alvos_ordem_completa():
     """Retorna a lista completa de alvos (usado na mensagem de erro de país)."""
@@ -522,112 +721,6 @@ def alvos_ordem_completa():
         {"pais": "Canada"}, {"pais": "Sweden"}, {"pais": "Austria"},
         {"pais": "Finland"}, {"pais": "France"}, {"pais": "worldwide"},
     ]
-
-
-def inhire_cli(argv: list[str]) -> None:
-    """Subcomando InHire (Fase 11).
-
-    Uso:
-        python -m careerops.main inhire discover   [--force] [--source seed|wayback|urlscan]
-        python -m careerops.main inhire validate   [--force] [--limit N]
-        python -m careerops.main inhire jobs       [--tenant T] [--min-score N] [--limit N]
-        python -m careerops.main inhire run        [--force] [--min-score N]
-
-    Flags opcionais: --force (revalida tudo), --limit, --tenant, --min-score.
-    """
-    import argparse
-
-    from careerops.collector.inhire import (
-        build_inhire_dataframe,
-        collect_all_tenants,
-        discover_tenants,
-        validate_tenants,
-    )
-    from careerops.collector.inhire.config import InhireConfig, load_config
-    from careerops.collector.inhire.http import InhireHttp
-    from careerops.collector.inhire.repository import JobRepository, TenantRepository
-
-    p = argparse.ArgumentParser(prog="careerops inhire", description="InHire tenant/job adapter")
-    sub = p.add_subparsers(dest="acao", required=True)
-
-    pd_ = sub.add_parser("discover", help="Descobre candidatos a tenant (sem validar)")
-    pd_.add_argument("--force", action="store_true")
-    pd_.add_argument("--source", help="seed|wayback|urlscan (sobrescreve config)")
-
-    pv = sub.add_parser("validate", help="Valida tenants conhecidos via API pública")
-    pv.add_argument("--force", action="store_true")
-    pv.add_argument("--limit", type=int, default=0)
-
-    pj = sub.add_parser("jobs", help="Coleta vagas dos tenants válidos")
-    pj.add_argument("--tenant", help="slug específico")
-    pj.add_argument("--min-score", type=int, default=0)
-    pj.add_argument("--limit", type=int, default=0)
-
-    pr = sub.add_parser("run", help="Pipeline completo: discover→validate→collect→dedupe")
-    pr.add_argument("--force", action="store_true")
-    pr.add_argument("--min-score", type=int, default=0)
-
-    a = p.parse_args(argv)
-    cfg = load_config()
-
-    if a.acao == "discover":
-        if a.source:
-            cfg.sources = [s.strip() for s in a.source.split(",") if s.strip()]
-        with InhireHttp(cfg.http) as http:
-            found = discover_tenants(cfg, http=http)
-        print(f"🔎 {len(found)} candidato(s) descoberto(s):")
-        for slug, src in sorted(found.items()):
-            print(f"   - {slug}  (source: {src})")
-        if not found:
-            print("💡 Dica: adicione slugs em data/inhire_seed.txt ou config.inhire.seed_tenants")
-
-    elif a.acao == "validate":
-        repo = TenantRepository()
-        known = {t.slug for t in repo.all() if t.active}
-        seed = set(load_seed_slugs_safe(cfg))
-        slugs = sorted(known | seed)
-        if a.limit:
-            slugs = slugs[: a.limit]
-        with InhireHttp(cfg.http) as http:
-            recs = validate_tenants(slugs, cfg, repo=repo, http=http)
-        ativos = [r for r in recs if r.active]
-        print(f"✅ {len(ativos)}/{len(recs)} tenant(s) ativo(s).")
-        for r in ativos:
-            print(f"   - {r.slug}  jobs={r.jobs_count}")
-
-    elif a.acao == "jobs":
-        repo = TenantRepository()
-        tenants = [t for t in repo.all() if t.active]
-        if a.tenant:
-            tenants = [t for t in tenants if t.slug == a.tenant.lower()]
-        if not tenants:
-            print("⚠️  Nenhum tenant ativo. Rode `inhire validate` primeiro.")
-            return
-        df, stats = collect_all_tenants(
-            tenants, cfg=cfg, include_keywords=cfg.include_keywords, min_score=a.min_score
-        )
-        if a.min_score:
-            df = df[df["match_score"].astype(float) >= a.min_score].reset_index(drop=True)
-        print(f"📦 {len(df)} vaga(s) coletada(s). stats={stats}")
-        for _, row in df.iterrows():
-            print(f"   - [{row.get('match_score')}] {row.get('company')} | {row.get('title')} | {row.get('location')}")
-
-    elif a.acao == "run":
-        from careerops.collector.inhire import fetch_inhire_jobs
-        df = fetch_inhire_jobs(cfg=cfg, min_score=a.min_score)
-        if df.empty:
-            print("📭 Nenhuma vaga InHire.")
-            return
-        if a.min_score:
-            df = df[df["match_score"].astype(float) >= a.min_score].reset_index(drop=True)
-        print(f"🟣 InHire run: {len(df)} vaga(s) após matching/dedupe.")
-        for _, row in df.iterrows():
-            print(f"   - [{row.get('match_score')}] {row.get('company')} | {row.get('title')} | {row.get('location')}")
-
-
-def load_seed_slugs_safe(cfg):
-    from careerops.collector.inhire.config import load_seed_slugs
-    return load_seed_slugs(cfg)
 
 
 if __name__ == "__main__":

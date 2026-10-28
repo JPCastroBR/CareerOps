@@ -2,13 +2,21 @@
 
 > **Visão**: Pipeline de automação de busca de emprego (SRE/DevOps/Cloud) que coleta → filtra → analisa com IA → registra em Google Sheets + Telegram, com agendamento multi-horário resiliente a desligamento.
 > **Repositório**: https://github.com/JPCastroBR/CareerOps (privado)
-> **Atualizado**: 2026-08-19
+> **Atualizado**: 2026-10-08
 
 ---
 
-## 📍 Status Atual: Fase 6 + 6.5 — Bancos BR & InHire (CONCLUÍDAS)
+## 📍 Status Atual: Fase 9 — Pré-filtro & Matching orientado ao perfil (CONCLUÍDA)
 
-O pipeline varre **portais próprios de bancos brasileiros** (Gupy/Workday) e **tenants InHire** (`*.inhire.app`) além do LinkedIn/Indeed. Bancos: **Gupy** (Itaú, Sicredi, BMG) via `__NEXT_DATA__` e **Workday** (Santander) via API `cxs/jobs` + JSON-LD. InHire: discovery (seed + Wayback) → validação via API pública → coleta → matching local contra o CV → dedupe, tudo em JSON/JSONL (`data/`). Ambas entram no fluxo comum (blocklist → anti-dup → Brasil remoto-only → n8n).
+O pipeline passou a usar o `profile.yaml` como fonte de verdade para **filtrar e pontuar** as vagas:
+
+1. **Pré-filtro determinístico por título** (9.1) — descarta funções claramente fora do perfil (Full Stack/Dev/Data/QA/Arquiteto/Segurança/gestão) antes da IA; títulos ambíguos são preservados.
+2. **Contexto do perfil no payload** (9.2) — `main.py` envia um `profile_context` compacto por vaga; o prompt do n8n passou a consumir esse contexto em vez do bloco `PERFIL` hardcoded.
+3. **Scorer determinístico** (9.3) — `det_score` 0–100 orientado a função/níveis de experiência; o n8n combina `final = max(IA, det)` (com guarda para IA vazia).
+
+Também corrigido um bug crítico de produção: `maxTokens` do modelo de IA estourava em prompts longos, gerando **saída vazia** e descarte silencioso de vagas (resolvido com `maxTokens` maior + guarda usando `det_score`).
+
+Tudo com **testes unitários (124)**.
 
 ---
 
@@ -44,7 +52,7 @@ O pipeline varre **portais próprios de bancos brasileiros** (Gupy/Workday) e **
 - [x] `main.py` lê `config.json` se existir; **fallback seguro** para `worldwide` remoto-only se ausente
 - [x] Mapeamento `work_mode`: `remote` / `onsite` / `any` / `hybrid` → `is_remote`
 - [x] `title_blocklist` config-driven com `BASE_TITLE_BLOCKLIST` interna (safety net)
-- [x] `config.json` adicionado ao `.gitignore` (por usuário, não sobe)
+- [x] `config.json` versionado no repo (padrão do projeto; revise alvos pessoais antes de publicar)
 
 ### Fase 5 — Cron Config-Driven (commit `8d167b0`)
 - [x] `install_cron_jobs.sh`: `SCHEDULES` agora só tem **horários + flag digest** (sem países)
@@ -57,84 +65,97 @@ O pipeline varre **portais próprios de bancos brasileiros** (Gupy/Workday) e **
 - [x] Adapter **Workday** (Santander) — search `cxs/jobs` `limit=20` + detalhe via JSON-LD; `httpx[http2]`
 - [x] Rate gate (≤8 req/60s) + backoff 60s + stop-on-throttle (Workday rejeita `limit≥22` e rajadas com HTTP 400)
 - [x] `config.json`: campo `banks[]` com `source` + `workday.{tenant,site}`; `--source banks|all`
-- [x] Vagas de bancos fluem pelo mesmo blocklist / anti-dup / `brazil_remote_only` do JobSpy
-- [x] README: seção banks Workday + pecularidade do `limit`
+- [x] Vagas de bancos fluem pelo mesmo blocklist / anti-dup / filtro do JobSpy
+- [x] README: seção banks Workday + peculiaridade do `limit`
 
----
+### Fase 7 — Qualidade de Filtragem & Perfil Estruturado
+- [x] **Filtro de modalidade BR**: `collector/filters.py` — aceita **remoto + híbrido**, descarta **presencial**
+- [x] Corrigido bug de `is_remote` (string `"False"` era tratada como verdadeira) + reconhecimento de localização (`Brazil`/`Brasil`/token `BR`)
+- [x] **Dedup normalizada** (`collector/dedup.py`): mesma URL **ou** empresa+título+localização (sem acentos/pontuação/caixa)
+- [x] **`profile.yaml`** — fonte única de verdade (níveis `hands_on`/`working_knowledge`/`learning`/`conceptual`/`none`, objetivos, preferências, matching guidance)
+- [x] **`profile.py`** — carregador/validador (schema, chaves duplicadas, idiomas sem níveis técnicos)
+- [x] `main.py` carrega/loga o perfil no início (sem alterar decisões do pipeline)
+- [x] `pyyaml` adicionado às dependências
+- [x] Testes unitários: filtros (15), dedup (13), perfil (13)
 
-### Fase 6.5 — Fonte InHire (tenants `*.inhire.app`)
-- [x] **Fase 1 (audit)**: arquitetura sem base class, DataFrames, persistência JSON (sem DB), argparse
-- [x] **Fase 2 (discovery)**: `tenant_discovery.py` — `seed` (file) + `wayback` (CDX); `slug_from_host`
-- [x] **Fase 3 (validator)**: `tenant_validator.py` — API `GET /job-posts/public/pages` + header `X-Tenant`; `count_jobs_from_pages`
-- [x] **Fase 4 (persistence)**: `repository.py` — `TenantRepository`/`JobRepository` (JSON/JSONL em `data/`)
-- [x] **Fase 5 (collector)**: `job_collector.py` — `collect_all_tenants`/`collect_jobs_for_tenant`; mapeia schema `jobsPage`
-- [x] **Fase 6 (url)**: `url.py` — `build_job_url`/`title_slug` (`https://<tenant>.inhire.app/vagas/<id>/<slug>`)
-- [x] **Fase 7 (normalize)**: `normalize.py` — workplace/seniority/title/company/dates
-- [x] **Fase 8 (cv_profile)**: `cv_profile.py` — `CVProfile` (roles/skills/seniority/countries) + `compute_match`
-- [x] **Fase 9 (matching)**: `matching.py` — 7 dimensões (role/skills/cloud/seniority/location/remote/exp)
-- [x] **Fase 10 (dedup)**: `dedup.py` — `dedupe_jobs` por `tenant_slug+source_id`
-- [x] **Fase 11 (CLI)**: `main.py` subcomando `inhire {discover,validate,jobs,run}` + `--source inhire`
-- [x] **Fase 12 (integration)**: `fetch_inhire_jobs` espelha `fetch_bank_jobs`/`fetch_recent_jobs`
-- [x] **Fase 13 (robustness)**: `http.py` retry/backoff/rate-gate/cache (timeout 10s, 3 retries, delay 0.4s)
-- [x] **Fase 14 (tests)**: `tests/test_inhire.py` (17 testes offline: url/normalize/matching/dedup/config/repo)
-- [ ] **Fase 15**: métricas de performance por fonte (stats já coletados em `collect_all_tenants`)
-- [ ] **Fase 16**: descoberta de empresas-alvo (`inhire companies --source linkedin`) p/ seed automático
+### Fase 8 — Portais InHire + Descoberta Incremental
+- [x] `collector/inhire.py` — API pública (`api.inhire.app/job-posts/public/pages`, header `X-Tenant`)
+- [x] Mapeamento `workplaceType` → `is_remote`; URL `https://<slug>.inhire.app/vagas/<jobId>/<slug>`
+- [x] `collector/inhire_discovery.py` — descoberta via **crt.sh + Wayback** (sem custo), filtro de slugs internos e validação pela API
+- [x] `data/inhire_companies.json` — **164 tenants validados**
+- [x] `--source inhire` + seção `inhire` no `config.json` (`enabled`, `companies`, `results_per_company`, `include_keywords`)
+- [x] `scripts/discover_inhire.sh` — atualização periódica (cron 1x/dia recomendado)
+- [x] Testes unitários de InHire/discovery (10)
+
+### Fase 9 — Pré-filtro & Matching orientado ao perfil
+- [x] **9.1 Pré-filtro determinístico por título** (`collector/prefilter.py`): regras em `profile.yaml → title_matching` (target / off_profile hard|soft); negativo vence, target resgata soft, ambíguo preservado; relatório de mantidas/descartadas/ambíguas por motivo
+- [x] **9.2 Contexto do perfil** (`profile.build_profile_context`): contexto compacto e determinístico (objetivo, cargos, senioridade, skills por nível, limitações, idiomas, modalidade) enviado no payload; prompt do n8n substituiu o bloco `PERFIL` hardcoded por `{{ $('Webhook').item.json.body.profile_context }}`
+- [x] **9.3 Scorer determinístico** (`collector/scoring.py`): `det_score` 0–100 (função + skills por nível + senioridade + modalidade; `learning` não reprova; hard blockers). `det_score`/`det_rationale` no payload; n8n usa `final = max(IA, det)` com guarda para IA vazia
+- [x] `skill_aliases` no `profile.yaml` (mapeia termos das vagas → skill id)
+- [x] Correção de produção: `maxTokens` do modelo + guarda `det_score` para **saída vazia da IA** (evitava descarte silencioso)
+- [x] Testes: pré-filtro (16), contexto (6), scorer (12)
 
 ---
 
 ## 🔧 Arquitetura Atual
 
 ```
-cron (horários) 
+cron (horários)
    └─> run_careerops.sh (wrapper)
-         ├─ lê config.json  ──────> países + work_mode + query + blocklist + bancos
-          └─> main.py (JobSpy + portais bancos Gupy/Workday + tenants InHire → filtros → n8n webhook)
-                └─> n8n (Guard Rails → IA OpenAI → Sheets/Telegram)
+         └─> main.py
+               ├─ carrega/valida profile.yaml (profile.py)   [observabilidade]
+               ├─ fontes:
+               │    ├─ JobSpy: LinkedIn + Indeed
+               │    ├─ banks.py: Gupy + Workday (Itaú/Sicredi/BMG/Santander)
+               │    └─ inhire.py: portais InHire ← data/inhire_companies.json
+               │          (inhire_discovery.py: crt.sh + Wayback → valida → JSON)
+               ├─ filtros: blocklist (main.py) + modalidade (filters.py) + dedup (dedup.py) + pré-filtro por título (prefilter.py)
+               ├─ perfil: envia `profile_context` (profile.py) e `det_score` (scoring.py) no payload
+               └─ POST 1 vaga/request → n8n (IA + `final = max(IA, det)`) → Sheets/Telegram
 ```
 
-**Princípio-chave**: Código = lógica. Config = intenção (por usuário, gitignored).
+**Princípio-chave**: Código = lógica. Config = intenção (por usuário, gitignored). Perfil = fonte de verdade do candidato (`profile.yaml`).
 
 ---
 
 ## 🚀 Roadmap Futuro
 
-### Fase 7 — Robustez & Observabilidade
-- [ ] **Testes automatizados** (`pytest`): parsing de config, mapeamento work_mode, filtros
-- [ ] **Validação de schema** do `config.json` (jsonschema) com mensagens de erro claras
-- [ ] **Metrics endpoint**: vagas/dia, taxa guard rails, distribuição de scores → Prometheus/Grafana
-- [ ] **Alertas de watchdog**: cron parado > 4h dispara notificação
+### Fase 10 — Busca por intenção & Robustez (PRÓXIMA)
+- [ ] **Revisar a busca por intenção** (SRE/Reliability, DevOps/Platform, Cloud/Infra, Observabilidade) em vez de uma query booleana única
+- [ ] **Alvos**: internacional contratando residentes no BR / relocação com visto (hoje só Brasil)
+- [ ] **Cron para `discover_inhire.sh`** (atualização automática de empresas)
+- [ ] **Nó Code no n8n** para preencher `OBS`/`SKILLS` a partir do `det_rationale` quando a IA vier vazia
+- [ ] **Validação de schema** do `config.json` (jsonschema) com mensagens claras
+- [ ] **Metrics endpoint**: vagas/dia, funil (coleta → pré-filtro → IA → aprovadas), distribuição de scores
+- [ ] **Alertas de watchdog**: cron parado > 4h
 
-### Fase 8 — Enriquecimento & Inteligência
-- [ ] **Auto-apply** para scores > 85 (Playwright/Greenhouse/Lever)
-- [ ] **Feedback loop**: Sheets "Entrevista Agendada" → re-treinar prompt IA
-- [ ] **Enriquecimento de empresa**: Glassdoor rating, size, funding (Crunchbase API)
-- [ ] **Multi-currículo**: matcher de currículo por país/idioma (PT/EN/DE)
+### Fase 11 — Auto-apply & Enriquecimento
+- [ ] **Auto-apply** para scores > 85 (Playwright/Greenhouse/Lever/InHire)
+- [ ] **Feedback loop**: Sheets "Entrevista Agendada" → ajuste do scorer/prompt
+- [ ] **Enriquecimento de empresa**: rating, size, funding (Glassdoor/Crunchbase)
+- [ ] **Multi-currículo**: matcher por país/idioma (PT/EN/DE)
 
-### Fase 9 — Deploy & Distribuição
-- [ ] **Docker image do collector** publicada (em vez de `uv run` no container)
-- [ ] **Helm chart / docker-compose prod** com healthchecks
-- [ ] **Setup wizard**: `careerops init` que gera `config.json` + `.env` interativamente
+### Fase 12 — Deploy, Distribuição & UX
+- [ ] **Docker image** do collector publicada (em vez de `uv run` no container)
 - [ ] **CI**: lint + test em PR (GitHub Actions)
-
-### Fase 10 — UX & Extensibilidade
-- [ ] **Plugin de blocklist**: arquivos YAML separados por categoria (vistos, idiomas, níveis)
-- [ ] **Suporte a mais fontes**: Greenhouse, Lever, Hacker News, Wellfound
-- [ ] **Dashboard web** (Streamlit) para revisar scores < 70 sem abrir Telegram
-- [ ] **Modo "dry-run" global**: `--dry-run` que lista vagas sem enviar ao n8n
+- [ ] **Setup wizard**: `careerops init` (config.json + .env + profile.yaml interativos)
+- [x] **Dashboard web** profissional (Visão geral, Vagas, Analisadas, Config, Perfil, Agenda, Workflows, Segredos)
+- [ ] **Mais fontes**: Greenhouse, Lever, Hacker News, Wellfound
 
 ---
 
-## 📊 Métricas de Sucesso (Definir)
-- Tempo de setup para novo usuário: < 15 min (clone → config → cron)
+## 📊 Métricas de Sucesso
 - Taxa de falsos positivos (vaga irrelevante aprovada): < 10%
-- Cobertura de testes: > 70% das funções de config/filtro
+- Redução de chamadas de IA via pré-filtro: ≥ 50%
+- Cobertura de testes: config/filtro/dedup/perfil/InHire/pré-filtro/scorer (hoje: 124 testes unitários)
 - Uptime do pipeline: > 99% (cron + container)
 
 ---
 
 ## 🗒 Notas de Implementação
-- **Commits**: Fase 0-5 (`b8d7ec7` → `8d167b0`) + Fase 6 (Gupy/Workday, atual)
-- **Arquivos versionados**: ~21 (sem `.env`, `credentials/`, `vagas_processadas.txt`, `logs/`, `config.json`)
-- **Stack**: Python 3.12 (uv), JobSpy, httpx[http2], n8n (Docker), OpenAI/OpenRouter, Google Sheets, Telegram, Cron
-- **Fontes de vagas**: LinkedIn + Indeed (JobSpy), Gupy (Itaú/Sicredi/BMG), Workday (Santander), InHire (`*.inhire.app` via API pública)
+- **Commits**: Fase 0-5 (`b8d7ec7` → `8d167b0`) + Fase 6 (Gupy/Workday) + Fase 7 (filtro/dedup/perfil) + Fase 8 (InHire) + Fase 9 (pré-filtro/contexto/scorer)
+- **Arquivos versionados**: inclui `config.json`, `profile.yaml`, `data/inhire_companies.json`, `data/inhire_seed.txt`, `n8n/workflows/*.json` (sem `.env`, `secrets/`, `vagas_processadas.txt`, `logs/`, `data/telemetry/`)
+- **Stack**: Python 3.12 (uv), JobSpy, httpx[http2], PyYAML, n8n (Docker), IA (OpenAI/DeepSeek), Google Sheets, Telegram, Cron
+- **Fontes de vagas**: LinkedIn + Indeed (JobSpy), Gupy (Itaú/Sicredi/BMG), Workday (Santander), **InHire (164 tenants)**
+- **Testes**: `uv run --project . python -m unittest discover -s tests` (124 testes; `tests/` versionado)
 - **Padrão de branch**: `master` direto (repo pessoal/privado)

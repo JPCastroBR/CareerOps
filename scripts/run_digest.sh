@@ -3,7 +3,7 @@
 # Lê o Google Sheets (Jobs) e envia UMA mensagem consolidada via Telegram.
 set -uo pipefail
 
-PROJECT=/home/castro/Projects/CareerOps
+PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT" || { echo "Falha ao acessar $PROJECT"; exit 3; }
 
 echo "[$(date)] Garantindo n8n no ar..."

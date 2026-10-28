@@ -1,0 +1,231 @@
+{
+  "updatedAt": "2026-08-07T02:18:17.296Z",
+  "createdAt": "2026-08-06T19:26:16.640Z",
+  "id": "Qwo8VerwSmMBBMEI",
+  "name": "careerops-digest",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "careerops-digest",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -864,
+        0
+      ],
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "name": "Webhook Digest",
+      "executeOnce": false,
+      "webhookId": "e4f5793a-3462-42ce-aed1-8179eaf1a2cd"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "SEU_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Jobsearch-spy",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SEU_SPREADSHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SEU_SPREADSHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -672,
+        0
+      ],
+      "id": "d1000000-0000-4000-8000-000000000002",
+      "name": "Ler Jobs (Sheets)",
+      "credentials": {
+        "googleApi": {
+          "id": "87M1CpQdV64Rdg4z",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseData(str){\n  const m = (str||'').match(/(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})/);\n  return m ? (m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0')) : null;\n}\nfunction modalidade(r){\n  const txt = ((r.json.title||'')+' '+(r.json.job_type||'')+' '+(r.json.description||'')).toLowerCase();\n  if (/remoto|remote|100% remote|trabalho a dist/.test(txt)) return 'Remoto';\n  if (/híbrido|hibrido|hybrid|hybrid/.test(txt)) return 'Híbrido';\n  if (/presencial|onsite|on-site|on site/.test(txt)) return 'Local';\n  if (r.json.is_remote === true) return 'Remoto';\n  if (r.json.is_remote === false) return 'Local';\n  return 'Indefinido';\n}\nconst hoje = $now.toFormat('yyyy-MM-dd');\nconst limiar = 65;\nconst linhas = $input.all();\nconst validas = linhas.filter(r => {\n  const s = parseFloat(r.json.Score);\n  const dt = parseData(r.json.Date || r.json.date || '');\n  return !isNaN(s) && s >= limiar && dt === hoje;\n});\nconst isBR = r => /brasil|brazil/i.test(r.json.location || '');\nconst br = validas.filter(isBR).sort((a,b)=>parseFloat(b.json.Score)-parseFloat(a.json.Score)).slice(0,15);\nconst ext = validas.filter(r=>!isBR(r)).sort((a,b)=>parseFloat(b.json.Score)-parseFloat(a.json.Score)).slice(0,15);\nfunction monta(arr, cabecalho){\n  let s=''; arr.forEach((r,i)=>{\n    const url=r.json.job_url||'';\n    const mod = modalidade(r);\n    s+=(i+1)+'. ['+mod+'] '+r.json.title+'\\n   '+r.json.company+' ('+r.json.location+') — Score '+r.json.Score+'\\n   '+url+'\\n\\n';\n  });\n  return cabecalho+'\\n'+(s||'Sem vagas nesta categoria hoje.');\n}\nconst brText = monta(br, '🇧🇷 BRASIL (Remoto) — Top '+br.length);\nconst extText = monta(ext, '🌍 EXTERNO (Realocacao) — Top '+ext.length);\nif (br.length===0 && ext.length===0){\n  return [{ json: { parte:'BR', data:hoje, total:0, resumo:'Sem vagas relevantes (Score>=65) de HOJE.' } }];\n}\nreturn [\n  { json: { parte:'BR', data:hoje, total:br.length, resumo: brText } },\n  { json: { parte:'EXT', data:hoje, total:ext.length, resumo: extText } }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -496,
+        0
+      ],
+      "id": "d1000000-0000-4000-8000-000000000003",
+      "name": "Filtrar Hoje+Score"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Voce e um Tech Recruiter Senior. Recebeu um resumo de vagas de o candidato (SRE/DevOps). O texto de entrada EM {{ $json.parte }} ja lista as vagas, cada uma COMECA com o rotulo de modalidade entre colchetes: [Remoto], [Hibrido] ou [Local]. MANTENHA ESSE rotulo no inicio de cada vaga ao reescrever. As URLs estao COMPLETAS e CRUAS em linha propria (NAO use [texto](url)). Re-ranqueie pelo FIT e reescreva em portugues, maximo 3800 caracteres. Comece com '📋 Vagas de HOJE ({{ $json.data }}) — parte {{ $json.parte }} ({{ $json.total }} vagas)'. No fim, uma frase de prioridade. Conteudo:\\n{{ $json.resumo }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -336,
+        0
+      ],
+      "id": "d1000000-0000-4000-8000-000000000004",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -336,
+        240
+      ],
+      "id": "d1000000-0000-4000-8000-000000000005",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "zXajfEyPnxUoFzej",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"chat_id\":\"8866154869\",\"text\":{{ JSON.stringify($('Basic LLM Chain').item.json.text) }}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -48,
+        0
+      ],
+      "id": "d1000000-0000-4000-8000-000000000006",
+      "name": "Enviar Telegram"
+    }
+  ],
+  "connections": {
+    "Webhook Digest": {
+      "main": [
+        [
+          {
+            "node": "Ler Jobs (Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler Jobs (Sheets)": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Hoje+Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Hoje+Score": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Enviar Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "5de09a81-6cc1-45d5-93b3-83e73f4e7b0d",
+  "activeVersionId": "aa683a93-3545-4f5d-a597-3ef874d03f71",
+  "versionCounter": 20,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-08-06T19:26:16.644Z",
+      "createdAt": "2026-08-06T19:26:16.644Z",
+      "role": "workflow:owner",
+      "workflowId": "Qwo8VerwSmMBBMEI",
+      "projectId": "Y6LqgfgaG5Bd8hn6",
+      "project": {
+        "updatedAt": "2026-07-13T16:03:16.065Z",
+        "createdAt": "2026-07-13T16:00:28.720Z",
+        "id": "Y6LqgfgaG5Bd8hn6",
+        "name": "João seu.email@gmail.com <seu.email@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "a5a97d03-7013-49e1-8db3-3e78c3d3afdf"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

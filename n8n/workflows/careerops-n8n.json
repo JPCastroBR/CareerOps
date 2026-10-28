@@ -1,0 +1,699 @@
+{
+  "updatedAt": "2026-10-28T14:24:39.012Z",
+  "createdAt": "2026-07-13T16:03:31.994Z",
+  "id": "Yah1J1MCvcOh4UWO",
+  "name": "careerops-n8n",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "model": "deepseek-v4-pro",
+        "options": {
+          "maxTokens": 7000,
+          "temperature": 0.1,
+          "topP": 0.9
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        -1680,
+        832
+      ],
+      "id": "9bdb1313-29d6-4814-a27c-5ad304e86d99",
+      "name": "DeepSeek Chat Model",
+      "credentials": {
+        "deepSeekApi": {
+          "id": "twkFlBoYYOuOWi0S",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "careerops-jobs",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2128,
+        576
+      ],
+      "id": "80d12633-32be-46e7-8bba-4892268754a7",
+      "name": "Webhook1",
+      "webhookId": "8f397c00-209c-4936-b868-0243d7596be7",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "SEU_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Jobsearch-spy",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SEU_SPREADSHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SEU_SPREADSHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "title": "={{ $('Webhook1').item.json.body.title }}",
+            "company": "={{ $('Webhook1').item.json.body.company }}",
+            "location": "={{ $('Webhook1').item.json.body.location }}",
+            "job_url": "={{ $('Webhook1').item.json.body.job_url }}",
+            "description": "={{ $('Webhook1').item.json.body.description }}",
+            "Score": "={{ JSON.parse($('Basic LLM Chain1').item.json.text.replace(/```json|```/g, '')).score }}",
+            "Apply": "Não",
+            "is_remote": "={{ $('Webhook1').item.json.body.is_remote }}",
+            "job_level": "={{ $('Webhook1').item.json.body.job_level }}",
+            "job_type": "={{ $('Webhook1').item.json.body.job_type }}",
+            "job_function": "={{ $('Webhook1').item.json.body.job_function }}",
+            "OBS": "={{ JSON.parse($('Basic LLM Chain1').item.json.text.replace(/```json|```/g, '')).justificativa }}",
+            "Date": "={{ $now.format('dd-MM-yyyy') }}",
+            "CORRECAO_RESUMO_ATS": "={{ JSON.parse($('Basic LLM Chain1').item.json.text.replace(/```json|```/g, '')).CORRECAO_RESUMO_ATS }}",
+            "SKILLS_DA_VAGA": "={{ JSON.parse($('Basic LLM Chain1').item.json.text.replace(/```json|```/g, '')).SKILLS_DA_VAGA }}",
+            "Entrevista": "Não"
+          },
+          "matchingColumns": [
+            "job_url"
+          ],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Apply",
+              "displayName": "Apply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Entrevista",
+              "displayName": "Entrevista",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Score",
+              "displayName": "Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_url",
+              "displayName": "job_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "OBS",
+              "displayName": "OBS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_function",
+              "displayName": "job_function",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_type",
+              "displayName": "job_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_level",
+              "displayName": "job_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "is_remote",
+              "displayName": "is_remote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CORRECAO_RESUMO_ATS",
+              "displayName": "CORRECAO_RESUMO_ATS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "SKILLS_DA_VAGA",
+              "displayName": "SKILLS_DA_VAGA",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -880,
+        480
+      ],
+      "id": "03ba4895-bfda-4cdc-9f4e-e23322dcad0b",
+      "name": "Append or update row in sheet2",
+      "credentials": {
+        "googleApi": {
+          "id": "87M1CpQdV64Rdg4z",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Título: {{ $('Webhook1').item.json.body.title }}\nEmpresa: {{ $('Webhook1').item.json.body.company }}\nLocal: {{ $('Webhook1').item.json.body.location }}\nDescrição: {{ $('Webhook1').item.json.body.description }}\n\nRETORNE SOMENTE JSON:\n\n{\n  \"score\": 0,\n  \"justificativa\": \"Máximo 30 palavras.\",\n  \"CORRECAO_RESUMO_ATS\": \"70-120 palavras.\",\n  \"SKILLS_DA_VAGA\": {\n    \"hands_on\": [],\n    \"relacionadas\": [],\n    \"conhecimento\": [],\n    \"ausentes\": []\n  }\n}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Você é um Tech Recruiter Sênior especializado em Infra, Cloud, DevOps, SRE e Observabilidade.\n\nAvalie o FIT entre candidato e vaga e reescreva o RESUMO PROFISSIONAL para maximizar o match ATS sem inventar experiência.\n\nREGRA ABSOLUTA:\nO currículo é a única fonte de verdade sobre as competências do candidato.\nA descrição da vaga NÃO é evidência de que o candidato possui uma tecnologia.\n\nCLASSIFIQUE CADA REQUISITO:\n\nhands_on = uso profissional comprovado no currículo.\nrelacionadas = experiência prática em tecnologia/conceito diferente, mas relevante para o requisito.\nconhecimento = curso, certificação, estudo ou conhecimento sem experiência profissional comprovada.\nausentes = não há evidência.\n\nNunca inferir hands_on pela simples presença de uma tecnologia na lista de skills, certificação ou descrição da vaga.\n\nExemplo:\nAWS aparece no perfil + AWS Cloud Practitioner, mas não há atuação profissional descrita com AWS:\nAWS = conhecimento.\n\nOCI aparece associado a migração/administração/operação:\nOCI = hands_on.\n\nSe houver dúvida, NÃO classifique como hands_on.\n\nTRANSFERIBILIDADE:\nQuando a vaga exigir uma tecnologia que o candidato não domina profissionalmente, destaque uma experiência relacionada REAL.\n\nAWS → OCI/Cloud\nDatadog → Grafana/Zabbix/New Relic/Elastic APM\nCloudWatch → experiência real em observabilidade/monitoramento\nAzure → OCI/Cloud\nPrometheus → Grafana/Zabbix/observabilidade\nPython/Go → automação de infraestrutura, NÃO desenvolvimento de software\n\nNunca substituir uma tecnologia por outra ou afirmar experiência na tecnologia exigida.\n\nPERFIL:\n13+ anos em Infraestrutura.\nHands-on comprovado: OCI, Linux, Windows, Docker, Ansible, PowerShell, Bash, Grafana, Zabbix, New Relic, Elastic APM, HAProxy.\nAWS, Kubernetes, Terraform: conhecimento/certificação, sem assumir hands-on.\nPython/Go: automação de infraestrutura.\nFoco: Infra, Cloud, SRE, DevOps, Observabilidade.\nInglês: técnico/profissional 6/10 em evolução.\nLocal: São Paulo-SP.\n\nREJEITAR / SCORE 0:\nsem descrição; QA/Tester; Backend/Frontend/Full Stack puro; Helpdesk/Service Desk; Scrum/Product; gestão; presencial no Brasil; internacional sem possibilidade de contratação no Brasil ou com exigência de direito de trabalho/cidadania local.\n\nLOCAL:\nPreferência: remoto BR > remoto internacional aceitando Brasil > relocation > híbrido BR.\nNo híbrido considerar cidade, frequência e salário informado.\n\nRESUMO:\n200-400 palavras.\nPriorize o que mais combina com a vaga.\nUse keywords da vaga quando forem verdadeiras.\nUse experiências relacionadas para demonstrar transferibilidade.\nNunca transforme conhecimento em hands-on.\nO texto precisa ser defensável em entrevista.\nscore menor que 69 colocar na CORRECAO_RESUMO_ATS e SKILLS_DA_VAGA como \"N/A\"\n\nFORMATO DOS ARRAYS DE SKILLS:\n- Liste APENAS o nome da tecnologia/conceito, sem explicações\n- NÃO use parênteses, notas ou comentários dentro dos arrays\n- \"hands_on\": só tecnologias com uso profissional comprovado no currículo\n- \"relacionadas\": tecnologias diferentes mas com experiência real transferível\n- \"conhecimento\": cursos, certificações, estudos sem prática profissional\n- \"ausentes\": tecnologias exigidas na vaga mas sem evidência no currículo\n\nEXEMPLO:\n✅ CORRETO:\n\"hands_on\": [\"Docker\", \"Grafana\"]\n\"relacionadas\": [\"New Relic (para vaga que exige Datadog)\"]  ← se transferível\n\"conhecimento\": [\"Kubernetes\", \"AWS\"]\n\"ausentes\": [\"Helm\", \"Service Mesh\"]\n\n❌ ERRADO:\n\"hands_on\": [\"Docker (uso profissional)\"]\n\"conhecimento\": [\"AWS (certificação)\"]\n\"ausentes\": [\"Helm (não tem)\"]\n\nCURRÍCULO:\n{{ $json.content }}"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -1552,
+        576
+      ],
+      "id": "af524313-c96d-45fc-a292-9194161a5dd3",
+      "name": "Basic LLM Chain1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f5e30623-5d75-4823-b2d5-ba5e75eb6707",
+              "leftValue": "={{ JSON.parse($('Basic LLM Chain1').item.json.text.replace(/```json|```/g, '')).score }}",
+              "rightValue": 71,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1216,
+        576
+      ],
+      "id": "5405c037-1e5d-475b-a617-9fe9a61de11a",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "SEU_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Jobsearch-spy",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SEU_SPREADSHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 942345717,
+          "mode": "list",
+          "cachedResultName": "Rejected-Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SEU_SPREADSHEET_ID/edit#gid=942345717"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "title": "={{ $('Webhook1').item.json.body.title }}",
+            "company": "={{ $('Webhook1').item.json.body.company }}",
+            "location": "={{ $('Webhook1').item.json.body.location }}",
+            "job_url": "={{ $('Webhook1').item.json.body.job_url }}",
+            "description": "={{ $('Webhook1').item.json.body.description }}",
+            "Score": "={{ JSON.parse($('Basic LLM Chain1').item.json.text.replace(/```json|```/g, '')).score }}",
+            "Visto?": "={{ JSON.parse($('Basic LLM Chain1').item.json.text.replace(/```json|```/g, '')).justificativa }}",
+            "Apply": "Não",
+            "is_remote": "={{ $('Webhook1').item.json.body.is_remote }}",
+            "job_level": "={{ $('Webhook1').item.json.body.job_level }}",
+            "job_type": "={{ $('Webhook1').item.json.body.job_type }}",
+            "job_function": "={{ $('Webhook1').item.json.body.job_function }}",
+            "Date": "={{ $now.format('dd-MM-yyyy') }}",
+            "CORRECAO_RESUMO_ATS": "={{ JSON.parse($('Basic LLM Chain1').item.json.text.replace(/```json|```/g, '')).CORRECAO_RESUMO_ATS }}",
+            "SKILLS_DA_VAGA": "={{ JSON.parse($('Basic LLM Chain1').item.json.text.replace(/```json|```/g, '')).SKILLS_DA_VAGA }}"
+          },
+          "matchingColumns": [
+            "job_url"
+          ],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Apply",
+              "displayName": "Apply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Score",
+              "displayName": "Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_url",
+              "displayName": "job_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Visto?",
+              "displayName": "Visto?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_function",
+              "displayName": "job_function",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_type",
+              "displayName": "job_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_level",
+              "displayName": "job_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "is_remote",
+              "displayName": "is_remote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CORRECAO_RESUMO_ATS",
+              "displayName": "CORRECAO_RESUMO_ATS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "SKILLS_DA_VAGA",
+              "displayName": "SKILLS_DA_VAGA",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -880,
+        704
+      ],
+      "id": "3bb1456f-746f-4c46-af49-6abd2cd72a69",
+      "name": "Append or update row in sheet3",
+      "credentials": {
+        "googleApi": {
+          "id": "87M1CpQdV64Rdg4z",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "get",
+        "documentURL": "SEU_DOC_ID_EN"
+      },
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        -1776,
+        576
+      ],
+      "id": "8cdfb2ce-2771-448f-aedf-140e3e49bf86",
+      "name": "Get a document1",
+      "credentials": {
+        "googleApi": {
+          "id": "87M1CpQdV64Rdg4z",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -1472,
+        848
+      ],
+      "id": "bfba766f-a541-4458-af5b-81da32884c3a",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "zXajfEyPnxUoFzej",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "DeepSeek Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Get a document1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain1": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append or update row in sheet3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a document1": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "a37f3b22-c23a-4183-894c-6717e75247b0",
+  "activeVersionId": "a37f3b22-c23a-4183-894c-6717e75247b0",
+  "versionCounter": 167,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-13T16:03:31.999Z",
+      "createdAt": "2026-07-13T16:03:31.999Z",
+      "role": "workflow:owner",
+      "workflowId": "Yah1J1MCvcOh4UWO",
+      "projectId": "Y6LqgfgaG5Bd8hn6",
+      "project": {
+        "updatedAt": "2026-07-13T16:03:16.065Z",
+        "createdAt": "2026-07-13T16:00:28.720Z",
+        "id": "Y6LqgfgaG5Bd8hn6",
+        "name": "João seu.email@gmail.com <seu.email@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "a5a97d03-7013-49e1-8db3-3e78c3d3afdf"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version a37f3b22",
+    "description": ""
+  }
+}

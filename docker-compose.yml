@@ -10,10 +10,14 @@ services:
       - "5678:5678"
     environment:
       - N8N_BASIC_AUTH_ACTIVE=false
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       - TZ=America/Sao_Paulo
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CURRICULO_BOT_TOKEN=${TELEGRAM_CURRICULO_BOT_TOKEN}
     volumes:
       - n8n_data:/home/node/.n8n
       - /home/castro/Obsidian:/home/node/obsidian:rw
+      - ./n8n/workflows:/home/node/workflows
     networks:
       - rede_isolada
 
@@ -26,12 +30,84 @@ services:
       - 8.8.8.8
     volumes:
       - .:/app
+      - careerops_venv:/opt/venv
     working_dir: /app
     environment:
       - TZ=America/Sao_Paulo
-      - UV_PROJECT_ENVIRONMENT=/app/.venv
-      - PYTHONPATH=/app/src  # <-- Adicione esta linha!
+      # venv do container separado do `.venv` do host (evita arquivos root-owned)
+      - UV_PROJECT_ENVIRONMENT=/opt/venv
+      - PYTHONPATH=/app/src
     command: tail -f /dev/null
+    depends_on:
+      - n8n
+    networks:
+      - rede_isolada
+
+  # Sincronizador dos workflows: aplica n8n/workflows/*.json no n8n
+  n8n-sync:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: careerops-n8n-sync
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows
+      - ./n8n:/sync
+    environment:
+      - TZ=America/Sao_Paulo
+    entrypoint: ["/bin/sh", "/sync/sync_loop.sh"]
+    depends_on:
+      - n8n
+    restart: unless-stopped
+    networks:
+      - rede_isolada
+
+  # Dashboard: visão ao vivo do que o coletor está fazendo (+ config/agenda)
+  dashboard:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: careerops-dashboard
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - careerops_venv:/opt/venv
+    working_dir: /app
+    environment:
+      - TZ=America/Sao_Paulo
+      - UV_PROJECT_ENVIRONMENT=/opt/venv
+      - PYTHONPATH=/app/src
+      - DASHBOARD_PORT=8080
+      - CAREEROPS_PROJECT_DIR=${PWD:-/app}
+    command: uv run python -m careerops.dashboard
+    restart: unless-stopped
+    depends_on:
+      - n8n
+    networks:
+      - rede_isolada
+
+  # Scheduler: dispara a varredura conforme config.json -> schedule (sem cron)
+  scheduler:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: careerops-scheduler
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - .:/app
+      - careerops_venv:/opt/venv
+    working_dir: /app
+    environment:
+      - TZ=America/Sao_Paulo
+      - UV_PROJECT_ENVIRONMENT=/opt/venv
+      - PYTHONPATH=/app/src
+      - CAREEROPS_PROJECT_DIR=${PWD:-/app}
+      - SCHEDULER_POLL_SECONDS=20
+    command: uv run python -m careerops.scheduler
+    restart: unless-stopped
     depends_on:
       - n8n
     networks:
@@ -39,6 +115,7 @@ services:
 
 volumes:
   n8n_data:
+  careerops_venv:
 
 networks:
   rede_isolada:
