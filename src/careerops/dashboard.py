@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+import re
 import requests
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -592,6 +593,11 @@ details.block > .body { padding: 0 16px 16px; }
           <button class="ghost" onclick="loadSheets(true)">Atualizar</button>
           <span class="msg" id="sheet-msg"></span>
         </div>
+        <div class="toolbar">
+          <input type="url" id="manual-url" placeholder="Colar URL de uma vaga interessante…" autocomplete="off" style="max-width:440px" />
+          <button class="ghost" onclick="manualAdd()">Validar e adicionar à planilha</button>
+          <span class="msg" id="manual-msg"></span>
+        </div>
         <div class="cards" id="sheet-cards"></div>
         <div class="table-wrap">
           <table>
@@ -611,7 +617,7 @@ details.block > .body { padding: 0 16px 16px; }
         <div class="toolbar"><input type="search" id="jobs-q" placeholder="Filtrar por título ou empresa…" autocomplete="off" style="max-width:280px" /><button class="ghost" onclick="loadJobsCSV()">Atualizar</button><span class="msg" id="jobs-msg"></span></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Data</th><th>Empresa</th><th>Título</th><th>Local</th><th>Fonte</th><th>Score</th></tr></thead>
+            <thead><tr><th>Data</th><th>Empresa</th><th>Título</th><th>Local</th><th>Fonte</th><th>Score</th><th></th></tr></thead>
             <tbody id="jobs-body"><tr><td colspan="6" class="empty">nenhuma vaga registrada ainda</td></tr></tbody>
           </table>
         </div>
@@ -820,6 +826,20 @@ details.block > .body { padding: 0 16px 16px; }
       toast(jr.ok ? ("Reenviado ✓ (" + (jr.stored ? "payload completo" : "sem descrição armazenada") + ")") : ("Falha: " + (jr.error || jr.status_code)));
       tick();
     }
+    async function manualAdd() {
+      const url = ($("manual-url").value || "").trim();
+      if (!url) { toast("Cole a URL da vaga primeiro"); return; }
+      $("manual-msg").textContent = "validando…";
+      try {
+        const r = await fetch("/api/manual", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
+        const jr = await r.json();
+        $("manual-url").value = "";
+        $("manual-msg").textContent = jr.ok ? ("enviada ✓ — " + (jr.title || url)) : ("falha: " + (jr.error || jr.status_code));
+        toast(jr.ok ? "Vaga enviada para análise ✓" : ("Falha: " + (jr.error || jr.status_code)));
+      } catch (e) {
+        $("manual-msg").textContent = "erro de rede";
+      }
+    }
     let view = "overview", sheetTab = "jobs", cfgMode = "guided", sheetPage = 0, jobsPage = 0;
 
     function show(v) {
@@ -841,6 +861,10 @@ details.block > .body { padding: 0 16px 16px; }
     document.querySelectorAll(".mainnav button, #settings-menu button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
     $("settings-btn").onclick = (e) => { e.stopPropagation(); $("settings-menu").classList.toggle("hidden"); };
     document.addEventListener("click", (e) => { if (!e.target.closest(".settings")) $("settings-menu").classList.add("hidden"); });
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-resend]");
+      if (b) resendJob(b.dataset.resend, b.dataset.title);
+    });
 
     // ---------------------------------------------------------------- overview
     async function tick() {
@@ -1164,8 +1188,8 @@ details.block > .body { padding: 0 16px 16px; }
       if (jobsPage > pages - 1) jobsPage = pages - 1;
       const slice = rows.slice(jobsPage * size, (jobsPage + 1) * size);
       $("jobs-body").innerHTML = slice.map((r) =>
-        `<tr><td class="mono">${fmtShort(r.analyzed_at)}</td><td>${esc(r.company)}</td><td>${titleCell(r.title, r.url)}</td><td>${esc(r.location)}</td><td class="mono">${esc(r.source)}</td><td>${scorePill(r.det_score)}</td></tr>`
-      ).join("") || `<tr><td colspan="6" class="empty">nenhuma vaga registrada ainda</td></tr>`;
+        `<tr><td class="mono">${fmtShort(r.analyzed_at)}</td><td>${esc(r.company)}</td><td>${titleCell(r.title, r.url)}</td><td>${esc(r.location)}</td><td class="mono">${esc(r.source)}</td><td>${scorePill(r.det_score)}</td><td>${r.url ? `<button class="ghost" data-resend="${esc(r.url)}" data-title="${esc(r.title)}">Reenviar</button>` : ""}</td></tr>`
+      ).join("") || `<tr><td colspan="7" class="empty">nenhuma vaga registrada ainda</td></tr>`;
       $("jobs-pager").innerHTML = pagerHTML(rows.length, jobsPage, size, "jobsGo");
     }
 
@@ -2690,6 +2714,32 @@ def _display_source(source, url) -> str:
     return "Outros"
 
 
+def _scrape_url(url: str) -> tuple[str, str, str]:
+    """Best-effort: extrai <title>, site/company e meta description de uma URL."""
+    title = company = desc = ""
+    try:
+        r = requests.get(url, timeout=8, allow_redirects=True,
+                         headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"})
+        text = r.text[:200000]
+        m = re.search(r"<title[^>]*>(.*?)</title>", text, re.S | re.I)
+        if m:
+            title = re.sub(r"\s+", " ", m.group(1)).strip()[:300]
+        m = (re.search(r'<meta[^>]+property=["\']og:site_name["\'][^>]+content=["\']([^"\']*)', text, re.I)
+             or re.search(r'<meta[^>]+name=["\']application-name["\'][^>]+content=["\']([^"\']*)', text, re.I))
+        if m:
+            company = m.group(1).strip()[:120]
+        m = re.search(r'<meta[^>]+(?:name|property)=["\'](?:description|og:description)["\'][^>]+content=["\']([^"\']*)', text, re.I)
+        if m:
+            desc = m.group(1).strip()[:2000]
+    except Exception:  # noqa: BLE001
+        pass
+    if not company:
+        company = (urlparse(url).netloc or "").replace("www.", "")[:80]
+    if not title:
+        title = "Vaga manual"
+    return title, company, desc
+
+
 def _sheet_urls() -> set[str]:
     urls: set[str] = set()
     for tab in ("jobs", "rejected"):
@@ -3107,6 +3157,40 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 return self._json(400, {"ok": False, "error": str(e)})
             return self._json(200, {"ok": True})
+        if path == "/api/manual":
+            url = str(payload.get("url") or "").strip()
+            if not (url.startswith("http://") or url.startswith("https://")):
+                return self._json(400, {"ok": False, "error": "URL inválida (use http:// ou https://)"})
+            title, company, desc = _scrape_url(url)
+            try:
+                cfg = load_config(CONFIG_PATH)
+                prompt = str(cfg.get("prompt") or "")
+            except Exception:  # noqa: BLE001
+                prompt = ""
+            profile_context = ""
+            try:
+                from careerops.profile import build_profile_context, load_profile
+                profile_context = build_profile_context(load_profile())
+            except Exception:  # noqa: BLE001
+                profile_context = ""
+            job = {
+                "title": title, "company": company, "location": "",
+                "description": desc, "job_url": url, "url": url,
+                "source": "manual", "is_remote": "", "job_type": "", "job_level": "",
+                "system_prompt": prompt, "profile_context": profile_context,
+            }
+            webhook = os.environ.get("N8N_WEBHOOK_URL") or _load_secrets().get("N8N_WEBHOOK_URL") or "http://n8n:5678/webhook/careerops-jobs"
+            try:
+                resp = requests.post(webhook, json=job, timeout=45)
+            except Exception as e:  # noqa: BLE001
+                return self._json(400, {"ok": False, "error": str(e)})
+            if resp.status_code == 200:
+                try:
+                    tel.record_sent(job)
+                except Exception:  # noqa: BLE001
+                    pass
+            return self._json(200, {"ok": resp.status_code == 200, "status_code": resp.status_code,
+                                    "title": job["title"], "company": job["company"]})
         if path == "/api/resend":
             url = str(payload.get("url") or "")
             if not url:
