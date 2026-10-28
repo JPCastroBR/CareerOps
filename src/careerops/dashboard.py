@@ -445,21 +445,48 @@ details.block > .body { padding: 0 16px 16px; }
 .app-footer { max-width: 1760px; margin: 0 auto; padding: 18px 30px 32px; display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; color: var(--dim); font-size: 11.5px; border-top: 1px solid rgba(255, 255, 255, .045); }
 .app-footer b { color: var(--muted); font-weight: 700; }
 .app-footer a { color: var(--accent-2); }
+.mainnav .n8n-link { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); border-radius: 10px; padding: 6px 11px; background: rgba(255, 255, 255, .03); font-size: 12px; }
+.mainnav .n8n-link .n8n-badge { background: rgba(76, 141, 255, .18); color: var(--accent-2); border-radius: 6px; padding: 1px 6px; font-size: 10px; font-weight: 800; letter-spacing: .3px; }
+.mainnav .n8n-link:hover { background: rgba(76, 141, 255, .12); border-color: rgba(76, 141, 255, .4); text-decoration: none; }
+.hero { padding: 46px 8px 26px; text-align: center; }
+.hero-badge { display: inline-block; padding: 5px 14px; border-radius: 999px; background: rgba(76, 141, 255, .12); border: 1px solid rgba(76, 141, 255, .25); color: var(--accent-2); font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
+.hero h1 { font-size: 46px; font-weight: 900; letter-spacing: -1.5px; margin: 18px 0 10px; background: linear-gradient(90deg, #eaf1ff, #9dc2ff 55%, #a78bfa); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.hero-sub { max-width: 660px; margin: 0 auto; color: var(--muted); font-size: 15px; line-height: 1.65; }
+.hero-cta { margin-top: 22px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; font-weight: 700; font-size: 13px; text-decoration: none; background: linear-gradient(180deg, #5a9bff, #3b78e0); color: #fff; border: 1px solid rgba(124, 176, 255, .35); }
+.btn.ghost { background: rgba(255, 255, 255, .04); color: var(--fg); border-color: var(--line-2); }
+.btn:hover { text-decoration: none; filter: brightness(1.06); }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 34px; }
+.home-card { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 18px; }
+.hc-icon { font-size: 22px; }
+.home-card h3 { margin: 10px 0 6px; font-size: 15px; }
+.home-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.home-how { max-width: 760px; margin: 30px auto 0; }
+.home-steps { color: var(--muted); font-size: 13.5px; line-height: 1.9; padding-left: 20px; margin: 0; }
+.home-steps b { color: var(--fg); }
+.modal-backdrop { position: fixed; inset: 0; z-index: 200; background: rgba(4, 7, 14, .72); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal { width: 100%; max-width: 520px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.modal-head b { font-size: 15px; }
+.modal-desc { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0 0 14px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#" onclick="show('overview');return false;">
+    <a class="brand" href="#" onclick="show('inicio');return false;">
       <span class="logo-mark">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>
       </span>
       <span class="brand-text">CareerOps<small>job intelligence · CareerOps</small></span>
     </a>
     <nav class="mainnav">
-      <button data-view="overview" class="active">Visão geral</button>
+      <button data-view="inicio" class="active">Início</button>
+      <button data-view="overview">Visão geral</button>
       <button data-view="vagas">Vagas</button>
       <button data-view="analisadas">Analisadas</button>
-      <a href="http://localhost:5678" target="_blank" class="nav-link">n8n ↗</a>
+      <button data-view="mercado">Mercado</button>
+      <a href="http://localhost:5678" target="_blank" class="nav-link n8n-link" title="Abrir o n8n (orquestração + IA)">n8n <span class="n8n-badge">:5678</span> ↗</a>
     </nav>
     <div class="header-right">
       <div class="status-chip" title="Status da coleta">
@@ -482,6 +509,36 @@ details.block > .body { padding: 0 16px 16px; }
   </header>
 
     <main>
+      <!-- ===================== INÍCIO (landing) ===================== -->
+      <section id="view-inicio">
+        <div class="hero">
+          <div class="hero-badge">pipeline de busca · SRE / DevOps / Cloud</div>
+          <h1>CareerOps</h1>
+          <p class="hero-sub">Sua busca de emprego rodando como infraestrutura: coleta, filtra, analisa com IA e registra cada vaga — de forma automática e observável. Config no navegador, sem mexer em código.</p>
+          <div class="hero-cta">
+            <a class="btn" href="#overview" onclick="show('overview')">Ver dashboard</a>
+            <a class="btn ghost" href="#mercado" onclick="show('mercado')">Mercado & gaps</a>
+            <a class="btn ghost" href="http://localhost:5678" target="_blank">Abrir n8n ↗</a>
+            <a class="btn ghost" href="https://github.com/JPCastroBR/CareerOps" target="_blank">GitHub ↗</a>
+          </div>
+        </div>
+        <div class="home-grid">
+          <div class="home-card"><div class="hc-icon">🔎</div><h3>Coleta</h3><p>JobSpy (LinkedIn/Indeed), portais de bancos (Gupy/Workday) e InHire — com descoberta automática de empresas.</p></div>
+          <div class="home-card"><div class="hc-icon">🧭</div><h3>Filtra</h3><p>Blocklist, dedup normalizado, modalidade (remoto/híbrido) e pré-filtro por título antes de gastar IA.</p></div>
+          <div class="home-card"><div class="hc-icon">🤖</div><h3>Analisa</h3><p>IA (DeepSeek/OpenAI) compara cada vaga com seu perfil e gera score 0–100.</p></div>
+          <div class="home-card"><div class="hc-icon">📊</div><h3>Registra</h3><p>Aprovadas (>71) vão pra planilha e Telegram; rejeitadas ficam em auditoria. Dashboard vivo acompanha tudo.</p></div>
+        </div>
+        <div class="home-how">
+          <div class="card-title">Como funciona</div>
+          <ol class="home-steps">
+            <li><b>config.json</b> define o que buscar — países, modalidade, query e fontes.</li>
+            <li><b>profile.yaml</b> é a fonte de verdade: skills por nível, cargos-alvo, preferências.</li>
+            <li>O <b>scheduler</b> dispara nos horários e envia cada vaga ao <b>n8n</b> (webhook).</li>
+            <li>A <b>IA</b> pontua e o resultado cai na planilha + Telegram; o digest resume o dia às 21h.</li>
+          </ol>
+        </div>
+      </section>
+
       <!-- ===================== VISÃO GERAL ===================== -->
       <section id="view-overview">
         <div class="page-head">
@@ -594,9 +651,7 @@ details.block > .body { padding: 0 16px 16px; }
           <span class="msg" id="sheet-msg"></span>
         </div>
         <div class="toolbar">
-          <input type="url" id="manual-url" placeholder="Colar URL de uma vaga interessante…" autocomplete="off" style="max-width:440px" />
-          <button class="ghost" onclick="manualAdd()">Validar e adicionar à planilha</button>
-          <span class="msg" id="manual-msg"></span>
+          <button class="ghost" onclick="openManualModal()">＋ Adicionar vaga por URL</button>
         </div>
         <div class="cards" id="sheet-cards"></div>
         <div class="table-wrap">
@@ -622,6 +677,34 @@ details.block > .body { padding: 0 16px 16px; }
           </table>
         </div>
         <div class="pager" id="jobs-pager"></div>
+      </section>
+
+      <!-- ===================== MERCADO ===================== -->
+      <section id="view-mercado" class="hidden">
+        <div class="page-head">
+          <div>
+            <h1>Mercado & Gaps</h1>
+            <p>O que as vagas pedem × o que seu perfil cobre — onde priorizar estudo.</p>
+          </div>
+          <div class="head-actions">
+            <div class="period-control">
+              <span class="period-label">Período</span>
+              <select id="gap-days">
+                <option value="0" selected>Todos</option>
+                <option value="7">Últimos 7 dias</option>
+                <option value="30">Últimos 30 dias</option>
+                <option value="90">Últimos 90 dias</option>
+              </select>
+            </div>
+            <button class="icon-btn" onclick="loadGaps()" title="Atualizar">⟳</button>
+          </div>
+        </div>
+        <div class="cards" id="gap-cards"></div>
+        <div class="dash-grid">
+          <div class="card span-6"><div class="card-title">Mais pedidas pelo mercado</div><div id="gap-demand" class="chart-h"></div></div>
+          <div class="card span-6"><div class="card-title">Gaps prioritários (o que melhorar)</div><div id="gap-missing" class="chart-h"></div></div>
+        </div>
+        <p class="msg" id="gap-msg"></p>
       </section>
 
       <!-- ===================== CONFIGURAÇÃO ===================== -->
@@ -804,6 +887,19 @@ details.block > .body { padding: 0 16px 16px; }
       </section>
     </main>
 
+  <div class="modal-backdrop hidden" id="manual-modal" onclick="if(event.target===this)closeManualModal()">
+    <div class="modal">
+      <div class="modal-head"><b>Adicionar vaga por URL</b><button class="ghost" onclick="closeManualModal()">✕</button></div>
+      <p class="modal-desc">Cole o link de uma vaga que achou interessante. O CareerOps <b>baixa a página</b>, extrai título e descrição e envia para a <b>IA</b> analisar (score + skills). O resultado entra no fluxo normal da planilha: <b>Jobs</b> se score &gt; 71, senão <b>Rejected-Jobs</b>.</p>
+      <input type="url" id="manual-url" placeholder="https://…" autocomplete="off" spellcheck="false" />
+      <div class="modal-actions">
+        <button class="ghost" onclick="closeManualModal()">Cancelar</button>
+        <button class="act" onclick="manualAdd()">Enviar para análise</button>
+      </div>
+      <span class="msg" id="manual-msg"></span>
+    </div>
+  </div>
+
   <footer class="app-footer">
     <span><b>CareerOps</b> · projeto de CareerOps</span>
     <a href="https://github.com/JPCastroBR/CareerOps" target="_blank">github.com/JPCastroBR/CareerOps ↗</a>
@@ -826,6 +922,8 @@ details.block > .body { padding: 0 16px 16px; }
       toast(jr.ok ? ("Reenviado ✓ (" + (jr.stored ? "payload completo" : "sem descrição armazenada") + ")") : ("Falha: " + (jr.error || jr.status_code)));
       tick();
     }
+    function openManualModal() { $("manual-url").value = ""; $("manual-msg").textContent = ""; $("manual-modal").classList.remove("hidden"); setTimeout(() => $("manual-url").focus(), 30); }
+    function closeManualModal() { $("manual-modal").classList.add("hidden"); }
     async function manualAdd() {
       const url = ($("manual-url").value || "").trim();
       if (!url) { toast("Cole a URL da vaga primeiro"); return; }
@@ -833,14 +931,14 @@ details.block > .body { padding: 0 16px 16px; }
       try {
         const r = await fetch("/api/manual", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
         const jr = await r.json();
-        $("manual-url").value = "";
         $("manual-msg").textContent = jr.ok ? ("enviada ✓ — " + (jr.title || url)) : ("falha: " + (jr.error || jr.status_code));
         toast(jr.ok ? "Vaga enviada para análise ✓" : ("Falha: " + (jr.error || jr.status_code)));
+        if (jr.ok) closeManualModal();
       } catch (e) {
         $("manual-msg").textContent = "erro de rede";
       }
     }
-    let view = "overview", sheetTab = "jobs", cfgMode = "guided", sheetPage = 0, jobsPage = 0;
+    let view = "inicio", sheetTab = "jobs", cfgMode = "guided", sheetPage = 0, jobsPage = 0;
 
     function show(v) {
       view = v;
@@ -857,6 +955,7 @@ details.block > .body { padding: 0 16px 16px; }
       if (v === "agenda") loadSchedule();
       if (v === "secrets") loadSecrets();
       if (v === "workflows") loadWorkflows();
+      if (v === "mercado") loadGaps();
     }
     document.querySelectorAll(".mainnav button, #settings-menu button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
     $("settings-btn").onclick = (e) => { e.stopPropagation(); $("settings-menu").classList.toggle("hidden"); };
@@ -1192,6 +1291,28 @@ details.block > .body { padding: 0 16px 16px; }
       ).join("") || `<tr><td colspan="7" class="empty">nenhuma vaga registrada ainda</td></tr>`;
       $("jobs-pager").innerHTML = pagerHTML(rows.length, jobsPage, size, "jobsGo");
     }
+    async function loadGaps() {
+      const days = $("gap-days").value || "0";
+      const d = await j(`/api/gaps?days=${days}`);
+      if (!d || !d.ok) { $("gap-msg").textContent = "erro: " + (d && d.error ? d.error : "?"); return; }
+      $("gap-msg").innerHTML = `${d.total_jobs} vagas · ${d.distinct_skills} skills pedidas · <span class="chip yes">domina</span> <span class="chip tag">parcial</span> <span class="chip no">faltando</span> · cobertura <b>${d.coverage_pct}%</b>`;
+      $("gap-cards").innerHTML = [
+        ["Vagas analisadas", d.total_jobs],
+        ["Skills pedidas", d.distinct_skills],
+        ["Cobertas pelo perfil", d.coverage_pct + "%"],
+        ["A melhorar", d.gaps.length],
+      ].map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+      const colors = { strong: "linear-gradient(90deg,var(--ok),var(--cyan))", weak: "linear-gradient(90deg,var(--warn),var(--ok))", missing: "linear-gradient(90deg,var(--err),var(--warn))" };
+      const label = { strong: "domina", weak: "parcial", missing: "faltando" };
+      $("gap-demand").innerHTML = (d.demand || []).map((s) => {
+        const pct = d.total_jobs ? Math.round(s.count / d.total_jobs * 100) : 0;
+        return `<div class="hbar"><div title="${esc(label[s.status])}">${esc(s.name)}</div><div class="track"><i style="width:${Math.min(100, pct)}%;background:${colors[s.status] || colors.missing}"></i></div><div class="val">${s.count}<small> ${pct}%</small></div></div>`;
+      }).join("") || `<div class="empty">sem skills registradas ainda</div>`;
+      $("gap-missing").innerHTML = (d.gaps || []).map((s) => {
+        const pct = d.total_jobs ? Math.round(s.ausentes / d.total_jobs * 100) : 0;
+        return `<div class="hbar"><div title="requerida e sem evidência no perfil">${esc(s.name)}</div><div class="track"><i style="width:${Math.min(100, pct * 4)}%;background:linear-gradient(90deg,var(--err),var(--warn))"></i></div><div class="val">${s.ausentes}<small> sem evidência</small></div></div>`;
+      }).join("") || `<div class="empty">perfil cobre tudo 👏</div>`;
+    }
 
     // ---------------------------------------------------------------- planilha
     function scorePill(v) {
@@ -1247,6 +1368,7 @@ details.block > .body { padding: 0 16px 16px; }
     $("sheet-days").onchange = () => loadSheets();
     $("sheet-q").oninput = () => { sheetPage = 0; renderSheets(); };
     $("jobs-q").oninput = () => { jobsPage = 0; renderJobs(); };
+    $("gap-days").onchange = () => loadGaps();
     async function loadSheets(force) {
       $("sheet-msg").textContent = "carregando…";
       const days = $("sheet-days").value || "0";
@@ -2387,9 +2509,9 @@ function renderSections(container, sections, curated) {
       if (e.target.closest(".combo-menu")) return;
       if (!e.target.closest(".combo")) document.querySelectorAll(".combo-menu").forEach((m) => m.classList.add("hidden"));
     });
-    const initialView = (location.hash || "#overview").replace("#", "");
+    const initialView = (location.hash || "#inicio").replace("#", "");
     show(initialView);
-    window.addEventListener("hashchange", () => show((location.hash || "#overview").replace("#", "")));
+    window.addEventListener("hashchange", () => show((location.hash || "#inicio").replace("#", "")));
   </script>
 </body>
 </html>
@@ -2673,6 +2795,88 @@ def _overview_data(days: int) -> dict:
     }
 
 
+def _gaps_data(days: int) -> dict:
+    """Compara as skills pedidas nas vagas (SKILLS_DA_VAGA) com o profile.yaml."""
+    from collections import Counter, defaultdict
+
+    rows: list = []
+    for tab in ("jobs", "rejected"):
+        d = sheets_mod.read_tab(tab)
+        if d.get("ok") and isinstance(d.get("rows"), list):
+            rows.extend(d["rows"])
+
+    if days:
+        cutoff = datetime.now().astimezone() - timedelta(days=int(days))
+
+        def recent(r) -> bool:
+            ds = str(r.get("Date") or "")[:10]
+            try:
+                return datetime.strptime(ds, "%Y-%m-%d").astimezone() >= cutoff
+            except Exception:  # noqa: BLE001
+                return False
+
+        rows = [r for r in rows if recent(r)]
+
+    demand: Counter = Counter()
+    buckets = defaultdict(Counter)
+    for r in rows:
+        raw = r.get("SKILLS_DA_VAGA") or ""
+        try:
+            sk = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:  # noqa: BLE001
+            continue
+        if not isinstance(sk, dict):
+            continue
+        for b in ("hands_on", "relacionadas", "conhecimento", "ausentes"):
+            for s in (sk.get(b) or []):
+                name = str(s).strip()
+                if not name or name.lower() == "n/a":
+                    continue
+                demand[name] += 1
+                buckets[b][name] += 1
+
+    strong = {"hands_on", "working_knowledge"}
+    weak = {"learning", "conceptual", "none"}
+    levels: dict = {}
+    try:
+        from careerops.profile import load_profile
+        profile = load_profile()
+        for s in (profile.get("skills") or []):
+            nm = str(s.get("label") or s.get("name") or "").strip().lower()
+            if nm:
+                levels[nm] = str(s.get("level") or "").strip().lower()
+    except Exception:  # noqa: BLE001
+        levels = {}
+
+    items = []
+    for name, c in demand.items():
+        lv = levels.get(name.lower())
+        if lv in strong:
+            status = "strong"
+        elif lv in weak:
+            status = "weak"
+        else:
+            status = "missing"
+        items.append({
+            "name": name, "count": c,
+            "hands_on": buckets["hands_on"].get(name, 0),
+            "relacionadas": buckets["relacionadas"].get(name, 0),
+            "conhecimento": buckets["conhecimento"].get(name, 0),
+            "ausentes": buckets["ausentes"].get(name, 0),
+            "status": status, "level": lv,
+        })
+    items.sort(key=lambda x: -x["count"])
+    strong_count = sum(1 for i in items if i["status"] == "strong")
+    return {
+        "ok": True,
+        "total_jobs": len(rows),
+        "distinct_skills": len(items),
+        "coverage_pct": round(100 * strong_count / len(items)) if items else 0,
+        "demand": items[:15],
+        "gaps": sorted([i for i in items if i["status"] != "strong"], key=lambda x: -x["ausentes"])[:15],
+    }
+
+
 def _load_secrets() -> dict:
     try:
         return json.loads(SECRETS_PATH.read_text(encoding="utf-8"))
@@ -2909,6 +3113,12 @@ class Handler(BaseHTTPRequestHandler):
             days = int((qs.get("days") or ["30"])[0])
             try:
                 return self._json(200, _overview_data(days))
+            except Exception as e:  # noqa: BLE001
+                return self._json(400, {"ok": False, "error": str(e)})
+        if path == "/api/gaps":
+            days = int((qs.get("days") or ["0"])[0])
+            try:
+                return self._json(200, _gaps_data(days))
             except Exception as e:  # noqa: BLE001
                 return self._json(400, {"ok": False, "error": str(e)})
         if path == "/api/n8n/workflows":

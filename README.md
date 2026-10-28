@@ -89,7 +89,9 @@ cp .env.example .env
 # Coloque o JSON em secrets/google-sa.json (não versionado)
 # Ou cole em Configurações → Segredos → Service Account
 
-# 4. Suba o stack
+# 4. Suba o stack — `make up` sobe E abre o dashboard no navegador
+make up            # = docker compose up -d + xdg-open http://localhost:8080
+# (ou só os containers:)
 docker compose up -d
 
 # 5. Teste uma busca
@@ -434,6 +436,8 @@ Bloqueia vagas de empresas listadas **antes** de enviar ao n8n/IA (economiza cha
 Dashboard web leve (stdlib, sem deps extras) ao lado do n8n:
 
 - **URL**: http://localhost:8080 — n8n continua em http://localhost:5678
+- **Início**: página descritiva do projeto (por que existe + como funciona) com atalhos para dashboard, n8n e GitHub.
+- **Mercado & Gaps**: compara o que as vagas pedem (SKILLS_DA_VAGA) com o seu `profile.yaml` — o que o mercado mais exige e o que priorizar para estudar.
 - **Navegação no topo em 3 áreas**: logo · **Visão geral / Vagas / Analisadas** · menu **Configurações** (Geral, Perfil, Agendamento, **Workflows**, **Segredos**)
 - **Identidade visual**: redesign dark navy profissional, sistema de tokens, cards elevados, KPIs com ícones SVG, tipografia Inter e tabelas consistentes — sem libs novas (stdlib + vanilla JS/CSS).
 - **Status de execução**: chip no header e painel **Status operacional** na Visão geral (status, execução, fonte, atualizado, início, erro); sem popup flutuante.
