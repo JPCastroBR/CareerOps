@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import os
-import uuid
 import re
+import subprocess
+import sys
+import uuid
 import requests
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +33,8 @@ from careerops.schedule import DEFAULT_CONFIG, get_schedule, load_config, next_r
 BASE_DIR = Path(__file__).resolve().parents[2]          # filesystem (/app no container)
 PROJECT_DIR = Path(os.environ.get("CAREEROPS_PROJECT_DIR") or BASE_DIR)  # apenas p/ exibição/crontab
 CONFIG_PATH = BASE_DIR / DEFAULT_CONFIG
+PROFILE_PATH = BASE_DIR / "profile.yaml"
+PROFILE_VERSIONS_DIR = BASE_DIR / "data" / "telemetry" / "profile_versions"
 SECRETS_PATH = BASE_DIR / "secrets" / "api_keys.json"
 SECRETS_DIR = BASE_DIR / "secrets"
 SA_PATH = SECRETS_DIR / "google-sa.json"
@@ -261,6 +265,8 @@ tbody tr:hover td { background: rgba(76, 141, 255, .045); }
 td { font-size: 12.5px; color: var(--fg); }
 .mono { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .trunc { display: inline-block; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; cursor: help; }
+.trunc.wide { max-width: 520px; }
+@media (min-width: 1600px) { .trunc { max-width: 440px; } .trunc.wide { max-width: 720px; } }
 .empty { color: var(--dim); text-align: center; padding: 28px 16px; font-size: 12.5px; }
 .pager { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--muted); }
 .pager .pager-info { margin-right: auto; color: var(--dim); }
@@ -480,6 +486,13 @@ details.block > .body { padding: 0 16px 16px; }
 .mini-bar { height: 8px; background: rgba(255, 255, 255, .06); border-radius: 999px; overflow: hidden; min-width: 120px; }
 .mini-bar i { display: block; height: 100%; border-radius: 999px; }
 .chip.tf { background: rgba(45, 212, 191, .14); color: #6ee7db; }
+.fab { position: fixed; right: 24px; bottom: 24px; z-index: 90; display: inline-flex; align-items: center; gap: 9px; padding: 12px 18px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--fg); font-weight: 700; font-size: 13px; cursor: pointer; box-shadow: var(--shadow); font-family: var(--font); }
+.fab:hover { border-color: rgba(76, 141, 255, .5); transform: translateY(-1px); }
+.fab .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); flex: none; }
+.fab .dot.running { background: var(--ok); box-shadow: 0 0 0 4px rgba(47, 212, 139, .18); animation: pulse 1.6s infinite; }
+.fab .dot.error { background: var(--err); }
+.fab .dot.finished { background: var(--accent); }
+.fab .fab-status { font-size: 11px; color: var(--muted); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -499,12 +512,6 @@ details.block > .body { padding: 0 16px 16px; }
       <a href="http://localhost:5678" target="_blank" class="nav-link n8n-link" title="Abrir o n8n (orquestração + IA)">n8n <span class="n8n-badge">:5678</span> ↗</a>
     </nav>
     <div class="header-right">
-      <div class="status-chip" title="Status da coleta">
-        <span class="status-dot idle" id="header-dot"></span>
-        <span id="header-status-text">ocioso</span>
-        <span class="status-sep">·</span>
-        <span id="header-updated">—</span>
-      </div>
       <div class="settings">
         <button class="ghost" id="settings-btn">Configurações ▾</button>
         <div class="menu hidden" id="settings-menu">
@@ -522,9 +529,9 @@ details.block > .body { padding: 0 16px 16px; }
       <!-- ===================== INÍCIO (landing) ===================== -->
       <section id="view-inicio">
         <div class="hero">
-          <div class="hero-badge">pipeline de busca · SRE / DevOps / Cloud</div>
+          <div class="hero-badge">pipeline de busca de vagas</div>
           <h1>CareerOps</h1>
-          <p class="hero-sub">Sua busca de emprego rodando como infraestrutura: coleta, filtra, analisa com IA e registra cada vaga — de forma automática e observável. Config no navegador, sem mexer em código.</p>
+          <p class="hero-sub">Sua busca de emprego de forma automática e observável: coleta, filtra, analisa com IA e registra cada vaga. Config no navegador, sem mexer em código.</p>
           <div class="hero-cta">
             <a class="btn" href="#overview" onclick="show('overview')">Ver dashboard</a>
             <a class="btn ghost" href="#mercado" onclick="show('mercado')">Mercado & gaps</a>
@@ -638,6 +645,58 @@ details.block > .body { padding: 0 16px 16px; }
         </div>
       </section>
 
+      <!-- ===================== COLETA (LIVE) ===================== -->
+      <section id="view-coleta" class="hidden">
+        <div class="page-head">
+          <div>
+            <h1>Coleta</h1>
+            <p>Acompanhe a execução em tempo real: fontes, filtros e vagas descartadas (com o motivo).</p>
+          </div>
+          <div class="head-actions">
+            <button class="ghost" onclick="loadCollect()" title="Atualizar agora">⟳</button>
+            <button class="ghost" onclick="clearCollect()" title="Apaga eventos e descartadas (faça a cada 2-3 dias)">Limpar logs</button>
+            <span class="msg" id="collect-msg"></span>
+          </div>
+        </div>
+        <div class="dash-grid">
+          <div class="card span-12">
+            <div class="card-title">Status da execução</div>
+            <div class="ops-grid">
+              <div class="ops-item"><span class="ops-label">Status</span><span class="ops-value" id="coll-status">—</span></div>
+              <div class="ops-item"><span class="ops-label">Execução</span><span class="ops-value mono" id="coll-run">—</span></div>
+              <div class="ops-item"><span class="ops-label">Fonte atual</span><span class="ops-value" id="coll-source">—</span></div>
+              <div class="ops-item"><span class="ops-label">Início</span><span class="ops-value" id="coll-started">—</span></div>
+              <div class="ops-item"><span class="ops-label">Atualizado</span><span class="ops-value" id="coll-updated">—</span></div>
+              <div class="ops-item"><span class="ops-label">Vistas</span><span class="ops-value" id="coll-seen">—</span></div>
+              <div class="ops-item"><span class="ops-label">Enviadas</span><span class="ops-value" id="coll-sent">—</span></div>
+              <div class="ops-item"><span class="ops-label">Filtradas</span><span class="ops-value" id="coll-filtered">—</span></div>
+            </div>
+            <div class="sources-row" style="margin-top:14px" id="coll-sources"></div>
+          </div>
+
+          <div class="card span-6">
+            <div class="card-title">Filtros aplicados (o que cada estágio descarta)</div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Estágio</th><th>Descartadas</th><th>Explicação</th></tr></thead>
+              <tbody id="coll-stages"></tbody>
+            </table></div>
+          </div>
+
+          <div class="card span-6">
+            <div class="card-title">Vagas descartadas (últimas)</div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Estágio</th><th>Empresa</th><th>Título</th><th>Motivo</th></tr></thead>
+              <tbody id="coll-discarded"></tbody>
+            </table></div>
+          </div>
+
+          <details class="block span-12">
+            <summary>Eventos recentes (debug)</summary>
+            <div class="body"><div id="coll-events" style="max-height:320px;overflow:auto"></div></div>
+          </details>
+        </div>
+      </section>
+
       <!-- ===================== VAGAS (SHEETS) ===================== -->
       <section id="view-vagas" class="hidden">
         <div class="page-head">
@@ -646,7 +705,8 @@ details.block > .body { padding: 0 16px 16px; }
         </div>
         <div class="toolbar">
           <div class="seg" id="sheet-seg">
-            <button data-sheet="jobs" class="active">Compatíveis</button>
+            <button data-sheet="all" class="active">Todos</button>
+            <button data-sheet="jobs">Compatíveis</button>
             <button data-sheet="rejected">Rejeitadas</button>
           </div>
           <select id="sheet-days" style="width:auto">
@@ -655,6 +715,9 @@ details.block > .body { padding: 0 16px 16px; }
             <option value="3">Últimos 3 dias</option>
             <option value="7">Últimos 7 dias</option>
             <option value="30">Últimos 30 dias</option>
+          </select>
+          <select id="sheet-entrevista" style="width:auto" title="Filtrar por situação da entrevista">
+            <option value="">Entrevista: todas</option>
           </select>
           <input type="search" id="sheet-q" placeholder="Filtrar por título ou empresa…" autocomplete="off" style="max-width:280px" />
           <button class="ghost" onclick="loadSheets(true)">Atualizar</button>
@@ -682,8 +745,8 @@ details.block > .body { padding: 0 16px 16px; }
         <div class="toolbar"><input type="search" id="jobs-q" placeholder="Filtrar por título ou empresa…" autocomplete="off" style="max-width:280px" /><button class="ghost" onclick="loadJobsCSV()">Atualizar</button><span class="msg" id="jobs-msg"></span></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Data</th><th>Empresa</th><th>Título</th><th>Local</th><th>Fonte</th><th>Score</th><th></th></tr></thead>
-            <tbody id="jobs-body"><tr><td colspan="6" class="empty">nenhuma vaga registrada ainda</td></tr></tbody>
+            <thead><tr><th>Data</th><th>Empresa</th><th>Título</th><th>Local</th><th>Fonte</th><th>Score Local</th><th>Score IA</th><th></th></tr></thead>
+            <tbody id="jobs-body"><tr><td colspan="8" class="empty">nenhuma vaga registrada ainda</td></tr></tbody>
           </table>
         </div>
         <div class="pager" id="jobs-pager"></div>
@@ -711,7 +774,7 @@ details.block > .body { padding: 0 16px 16px; }
         </div>
         <div class="market-note">
           <b>De onde vem isto?</b> Cada vaga na planilha tem o campo <b>SKILLS_DA_VAGA</b>, preenchido pela IA — o que a vaga pede, classificado em
-          <span class="chip yes">domina</span> (evidência forte no perfil) · <span class="chip tag">parcial</span> (conhecimento/estudo) · <span class="chip no">faltando</span> (sem evidência) e <span class="chip tf">transferível</span> (outra skill do mesmo grupo você já domina — ex.: AWS forte transfere conceitos para GCP/Azure/OCI).
+          <span class="chip yes">domina</span> (evidência forte no perfil) · <span class="chip tag">parcial</span> (conhecimento/estudo) · <span class="chip no">faltando</span> (sem evidência) e <span class="chip tf">transferível</span> (outra skill do mesmo grupo você já domina — ex.: PostgreSQL forte transfere conceitos para MySQL).
           Cruzamos com o <b>profile.yaml</b> (apelidos via <code>skill_aliases</code>). <b>"Skills a melhorar"</b> = pedidas em muitas vagas mas com pouca/nenhuma evidência sua — priorize por frequência.
         </div>
         <div class="cards" id="gap-cards"></div>
@@ -821,6 +884,18 @@ details.block > .body { padding: 0 16px 16px; }
             <span class="msg" id="profile-raw-msg"></span>
           </div>
         </div>
+        <div class="section">
+          <div class="section-head"><span class="section-num">9</span><h3>Versões do perfil</h3></div>
+          <p class="msg" style="margin:0 0 12px">Backups automáticos. Sempre que o perfil é salvo (IA ou manual), a versão anterior é arquivada aqui.</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Versão</th><th>Data</th><th>Tamanho</th><th>Ação</th></tr></thead>
+            <tbody id="pf-versions"><tr><td colspan="4" class="empty">nenhuma versão ainda</td></tr></tbody>
+          </table></div>
+          <div class="actions">
+            <button class="ghost" onclick="loadProfileVersions()">Atualizar</button>
+            <span class="msg" id="pf-versions-msg"></span>
+          </div>
+        </div>
       </section>
 
       <!-- ===================== AGENDA ===================== -->
@@ -845,6 +920,10 @@ details.block > .body { padding: 0 16px 16px; }
           <div class="field">
             <div class="field-label"><div class="name">Tolerância (min)</div><div class="help">Se o PC estava desligado, ainda roda um horário atrasado dentro desse limite.</div></div>
             <div class="field-input"><input type="number" id="sch-grace" placeholder="30" /></div>
+          </div>
+          <div class="field">
+            <div class="field-label"><div class="name">Fonte por frequência</div><div class="help">LinkedIn/Indeed a cada execução; Gupy/Workday/InHire 1x por dia (menos atualização). Aplicado só às fontes habilitadas em Config → Fontes.</div></div>
+            <div class="field-input" id="sch-sources"></div>
           </div>
           <div class="actions">
             <button class="act" onclick="saveSchedule()">Salvar agenda</button>
@@ -938,6 +1017,50 @@ details.block > .body { padding: 0 16px 16px; }
     <a href="https://github.com/JPCastroBR/CareerOps" target="_blank">github.com/JPCastroBR/CareerOps ↗</a>
   </footer>
 
+  <button class="fab" id="fab" onclick="show('coleta')" title="Coleta ao vivo (clique para abrir)">
+    <span class="dot idle" id="fab-dot"></span>
+    <span>Coleta</span>
+    <span class="fab-status" id="fab-status">ocioso</span>
+  </button>
+
+  <button class="fab hidden" id="pf-fab" onclick="openProfileAIModal()" title="Preencher perfil com IA" style="bottom:88px">
+    <span>✨</span><span>Preencher com IA</span>
+  </button>
+
+  <div class="modal-backdrop hidden" id="pf-modal" onclick="if(event.target===this)closeProfileAIModal()">
+    <div class="modal" style="max-width:680px">
+      <div class="modal-head"><b>Preencher perfil com IA</b><button class="ghost" onclick="closeProfileAIModal()">✕</button></div>
+      <p class="modal-desc">A IA monta o <span class="mono">profile.yaml</span> com base no currículo, LinkedIn e respostas. <b>Ao concluir, será feito um backup do perfil anterior e ele será substituído pelo gerado.</b></p>
+      <input type="text" id="pf-linkedin" placeholder="LinkedIn (URL, opcional)" />
+      <textarea id="pf-curriculo" rows="6" placeholder="Cole o texto do currículo (opcional)…" style="margin-top:10px"></textarea>
+      <textarea id="pf-answers" rows="12" style="margin-top:10px"></textarea>
+      <div class="modal-actions">
+        <button class="ghost" onclick="closeProfileAIModal()">Cancelar</button>
+        <button class="act" onclick="fillProfileAI()">Gerar perfil</button>
+      </div>
+      <span class="msg" id="pf-msg"></span>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="pf-view-modal" onclick="if(event.target===this)closeProfileView()">
+    <div class="modal" style="max-width:720px">
+      <div class="modal-head"><b id="pf-view-title">Versão</b><button class="ghost" onclick="closeProfileView()">✕</button></div>
+      <pre class="preview" id="pf-view-content" style="min-height:240px"></pre>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="scan-modal" onclick="if(event.target===this)closeScanModal()">
+    <div class="modal">
+      <div class="modal-head"><b>Disparar scraping</b><button class="ghost" onclick="closeScanModal()">✕</button></div>
+      <p class="modal-desc" id="scan-desc">Iniciar a busca manualmente?</p>
+      <div class="modal-actions">
+        <button class="ghost" onclick="closeScanModal()">Cancelar</button>
+        <button class="act" onclick="triggerScan()">Disparar</button>
+      </div>
+      <span class="msg" id="scan-msg"></span>
+    </div>
+  </div>
+
   <script>
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -957,6 +1080,92 @@ details.block > .body { padding: 0 16px 16px; }
     }
     function openManualModal() { $("manual-url").value = ""; $("manual-msg").textContent = ""; $("manual-modal").classList.remove("hidden"); setTimeout(() => $("manual-url").focus(), 30); }
     function closeManualModal() { $("manual-modal").classList.add("hidden"); }
+    const PROFILE_QUESTIONS = `1. Cargo atual e empresa?
+2. Anos de experiência na sua área?
+3. Tecnologias com uso profissional (hands-on) — liste e diga onde usou:
+4. Tecnologias que estudou ou tem certificação, mas sem prática profissional:
+5. Certificações (nome + ano):
+6. Idiomas e nível (ex.: inglês B2):
+7. Cidade/estado + disponibilidade (remoto / híbrido / presencial):
+8. Cargos-alvo que busca (ex.: Engenheiro de Software Sênior):
+9. Principais atividades do dia a dia (top 5):
+10. O que NÃO quer fazer (ex.: suporte, vendas):`;
+    function openProfileAIModal() {
+      if (!$("pf-answers").value.trim()) $("pf-answers").value = PROFILE_QUESTIONS;
+      $("pf-msg").textContent = "";
+      $("pf-modal").classList.remove("hidden");
+    }
+    function closeProfileAIModal() { $("pf-modal").classList.add("hidden"); }
+    function closeProfileView() { $("pf-view-modal").classList.add("hidden"); }
+    async function fillProfileAI() {
+      $("pf-msg").textContent = "gerando… (pode levar ~30s)";
+      const payload = {
+        linkedin: $("pf-linkedin").value.trim(),
+        curriculo: $("pf-curriculo").value.trim(),
+        answers: $("pf-answers").value.trim(),
+      };
+      try {
+        const r = await fetch("/api/profile/ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        const jr = await r.json();
+        if (jr.ok) {
+          $("pf-msg").textContent = "perfil preenchido ✓";
+          toast("Perfil gerado pela IA ✓");
+          closeProfileAIModal();
+          loadGuided("profile.yaml");
+          loadProfileVersions();
+        } else {
+          $("pf-msg").textContent = "erro: " + (jr.error || "?");
+          toast("Falha: " + (jr.error || "?"));
+        }
+      } catch (e) {
+        $("pf-msg").textContent = "erro de rede";
+      }
+    }
+    async function loadProfileVersions() {
+      const box = $("pf-versions");
+      if (!box) return;
+      try {
+        const r = await j("/api/profile/versions");
+        box.innerHTML = (r.versions || []).map((v) =>
+          `<tr><td class="mono">${esc(v.name)}</td><td class="mono">${fmtShort(v.mtime)}</td><td class="mono">${(v.size / 1024).toFixed(1)} KB</td><td><button class="ghost" onclick="viewProfileVersion('${esc(v.name)}')">Ver</button> <button class="ghost" onclick="restoreProfileVersion('${esc(v.name)}')">Restaurar</button></td></tr>`
+        ).join("") || `<tr><td colspan="4" class="empty">nenhuma versão ainda</td></tr>`;
+      } catch (e) {}
+    }
+    async function viewProfileVersion(name) {
+      const r = await j("/api/profile/version?name=" + encodeURIComponent(name));
+      if (!r.ok) { toast("erro: " + r.error); return; }
+      $("pf-view-title").textContent = name;
+      $("pf-view-content").textContent = r.content;
+      $("pf-view-modal").classList.remove("hidden");
+    }
+    async function restoreProfileVersion(name) {
+      if (!confirm("Restaurar esta versão? O perfil atual será arquivado como backup.")) return;
+      const r = await fetch("/api/profile/restore", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+      const jr = await r.json();
+      toast(jr.ok ? "versão restaurada ✓" : ("erro: " + (jr.error || "?")));
+      if (jr.ok) { loadGuided("profile.yaml"); loadProfileVersions(); }
+    }
+    let scanSource = "";
+    function openScanModal(source) {
+      scanSource = source;
+      $("scan-desc").textContent = "Deseja disparar o scraping de " + (SOURCE_LABELS[source] || source) + " agora?";
+      $("scan-msg").textContent = "";
+      $("scan-modal").classList.remove("hidden");
+    }
+    function closeScanModal() { $("scan-modal").classList.add("hidden"); }
+    async function triggerScan() {
+      const source = scanSource;
+      $("scan-msg").textContent = "iniciando…";
+      try {
+        const r = await fetch("/api/scan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ source }) });
+        const jr = await r.json();
+        $("scan-msg").textContent = jr.ok ? ("disparado ✓ (" + (jr.sources || [source]).join(", ") + ")") : ("erro: " + (jr.error || "?"));
+        toast(jr.ok ? "Scraping iniciado ✓" : ("Falha: " + (jr.error || "?")));
+        if (jr.ok) { closeScanModal(); show("coleta"); }
+      } catch (e) {
+        $("scan-msg").textContent = "erro de rede";
+      }
+    }
     async function manualAdd() {
       const url = ($("manual-url").value || "").trim();
       if (!url) { toast("Cole a URL da vaga primeiro"); return; }
@@ -971,7 +1180,7 @@ details.block > .body { padding: 0 16px 16px; }
         $("manual-msg").textContent = "erro de rede";
       }
     }
-    let view = "inicio", sheetTab = "jobs", cfgMode = "guided", sheetPage = 0, jobsPage = 0;
+    let view = "inicio", sheetTab = "all", cfgMode = "guided", sheetPage = 0, jobsPage = 0;
 
     function show(v) {
       view = v;
@@ -981,14 +1190,16 @@ details.block > .body { padding: 0 16px 16px; }
       $("settings-menu").classList.add("hidden");
       document.querySelectorAll("main > section").forEach((s) => s.classList.toggle("hidden", s.id !== "view-" + v));
       if (v === "overview") tick();
-      if (v === "vagas") { const sq = $("sheet-q"); if (sq) sq.value = ""; sheetPage = 0; loadSheets(); }
+      if (v === "coleta") loadCollect();
+      if (v === "vagas") { const sq = $("sheet-q"); if (sq) sq.value = ""; const se = $("sheet-entrevista"); if (se) se.value = ""; sheetPage = 0; loadSheets(); }
       if (v === "analisadas") { const jq = $("jobs-q"); if (jq) jq.value = ""; jobsPage = 0; loadJobsCSV(); }
       if (v === "config") loadGuided("config.json");
-      if (v === "perfil") loadGuided("profile.yaml");
+      if (v === "perfil") { loadGuided("profile.yaml"); loadProfileVersions(); }
       if (v === "agenda") loadSchedule();
       if (v === "secrets") loadSecrets();
       if (v === "workflows") loadWorkflows();
       if (v === "mercado") loadGaps();
+      $("pf-fab").classList.toggle("hidden", v !== "perfil");
     }
     document.querySelectorAll(".mainnav button, #settings-menu button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
     $("settings-btn").onclick = (e) => { e.stopPropagation(); $("settings-menu").classList.toggle("hidden"); };
@@ -996,6 +1207,10 @@ details.block > .body { padding: 0 16px 16px; }
     document.addEventListener("click", (e) => {
       const b = e.target.closest("[data-resend]");
       if (b) resendJob(b.dataset.resend, b.dataset.title);
+    });
+    document.addEventListener("click", (e) => {
+      const chip = e.target.closest("#ov-sources .source-chip");
+      if (chip && chip.dataset.source) openScanModal(chip.dataset.source);
     });
 
     // ---------------------------------------------------------------- overview
@@ -1026,9 +1241,9 @@ details.block > .body { padding: 0 16px 16px; }
       const status = s.status || "idle";
       const labels = { running: "coletando", finished: "concluída", error: "erro", idle: "ocioso" };
       const label = labels[status] || status;
-      $("header-status-text").textContent = label;
-      $("header-dot").className = "status-dot " + status;
-      $("header-updated").textContent = s.updated_at ? fmtShort(s.updated_at) : "—";
+      const fabDot = $("fab-dot"), fabStatus = $("fab-status");
+      if (fabDot) fabDot.className = "dot " + status;
+      if (fabStatus) fabStatus.textContent = label;
       const put = (id, value, cls) => {
         const el = $(id); if (!el) return;
         el.textContent = value || "—";
@@ -1044,10 +1259,51 @@ details.block > .body { padding: 0 16px 16px; }
     async function pollRun() {
       try { updateStatus(await j("/api/state")); } catch (e) {}
     }
+    setInterval(pollRun, 4000);
+    async function loadCollect() {
+      try {
+        const d = await j("/api/collect");
+        const s = d.state || {};
+        const labels = { running: "coletando", finished: "concluída", error: "erro", idle: "ocioso" };
+        const put = (id, v, cls) => { const el = $(id); if (!el) return; el.textContent = v || "—"; el.className = "ops-value" + (cls ? " " + cls : ""); };
+        put("coll-status", labels[s.status] || s.status || "ocioso", s.status);
+        put("coll-run", s.run_id, "mono");
+        put("coll-source", s.current_source || (s.meta && s.meta.source), "");
+        put("coll-started", s.started_at ? fmtShort(s.started_at) : "", "");
+        put("coll-updated", s.updated_at ? fmtShort(s.updated_at) : "", "");
+        const c = s.counters || {};
+        put("coll-seen", c.seen, "");
+        put("coll-sent", c.sent, "");
+        put("coll-filtered", c.filtered, "");
+        const sources = s.sources || {};
+        $("coll-sources").innerHTML = Object.keys(sources).map((k) => {
+          const v = sources[k] || {};
+          const done = v.finished_at != null;
+          return `<span class="source-chip">${esc(k)}${done ? " · " + (v.found || 0) : " · rodando…"}</span>`;
+        }).join("") || `<span class="msg">nenhuma fonte registrada ainda</span>`;
+        $("coll-stages").innerHTML = (d.stages || []).map((st) =>
+          `<tr><td><b>${esc(st.label)}</b><div class="mono" style="font-size:10px;color:var(--dim)">${esc(st.stage)}</div></td><td class="mono">${st.discarded || 0}</td><td class="msg">${esc(st.desc)}</td></tr>`
+        ).join("") || `<tr><td colspan="3" class="empty">nenhum filtro registrado</td></tr>`;
+        $("coll-discarded").innerHTML = (d.discarded || []).map((r) =>
+          `<tr><td><span class="chip tag">${esc(r.stage_label || r.stage)}</span></td><td>${esc(r.company)}</td><td>${r.url ? `<a href="${esc(r.url)}" target="_blank">${esc(r.title)}</a>` : esc(r.title)}</td><td class="msg">${esc(r.reason)}</td></tr>`
+        ).join("") || `<tr><td colspan="4" class="empty">nenhuma vaga descartada registrada ainda</td></tr>`;
+        $("coll-events").innerHTML = (d.events || []).slice().reverse().map((e) =>
+          `<div class="mono" style="padding:4px 0;border-bottom:1px dashed #20242e"><span class="chip tag">${esc(e.kind)}</span> ${esc(e.ts)} ${esc(e.source || e.stage || e.status || "")} ${e.found !== undefined ? "found=" + e.found : ""} ${e.discarded !== undefined ? "discarded=" + e.discarded : ""}</div>`
+        ).join("") || `<div class="empty">sem eventos</div>`;
+      } catch (e) {}
+    }
+    async function clearCollect() {
+      if (!confirm("Apagar eventos e vagas descartadas registradas?")) return;
+      const r = await fetch("/api/collect/clear", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const jr = await r.json();
+      toast(jr.ok ? "logs limpos ✓" : ("erro: " + (jr.error || "?")));
+      loadCollect();
+    }
+    setInterval(() => { if (view === "coleta") loadCollect(); }, 5000);
     const SOURCE_LABELS = { linkedin: "LinkedIn", indeed: "Indeed", jobspy: "JobSpy", gupy: "Gupy", workday: "Workday", inhire: "InHire", banks: "Gupy/Workday", other: "Outros" };
     function renderOverview(d) {
       $("ov-status").textContent = d.ok ? "dados da planilha" : "erro: " + (d.error || "?");
-      $("ov-sources").innerHTML = (d.sources || []).map((s) => `<span class="source-chip">${esc(SOURCE_LABELS[s] || s)}</span>`).join("") || `<span class="msg">nenhuma fonte ativa</span>`;
+      $("ov-sources").innerHTML = (d.sources || []).map((s) => `<span class="source-chip" data-source="${esc(s)}" style="cursor:pointer" title="Clique para disparar o scraping de ${esc(SOURCE_LABELS[s] || s)}">${esc(SOURCE_LABELS[s] || s)}</span>`).join("") || `<span class="msg">nenhuma fonte ativa</span>`;
       const pegas = d.pegas || 0;
       const pctOf = (v) => (pegas ? Math.round((v / pegas) * 100) : 0);
       const set = (id, v) => { const el = $(id); if (el) el.textContent = (v === null || v === undefined) ? "—" : v; };
@@ -1320,8 +1576,8 @@ details.block > .body { padding: 0 16px 16px; }
       if (jobsPage > pages - 1) jobsPage = pages - 1;
       const slice = rows.slice(jobsPage * size, (jobsPage + 1) * size);
       $("jobs-body").innerHTML = slice.map((r) =>
-        `<tr><td class="mono">${fmtShort(r.analyzed_at)}</td><td>${esc(r.company)}</td><td>${titleCell(r.title, r.url)}</td><td>${esc(r.location)}</td><td class="mono">${esc(r.source)}</td><td>${scorePill(r.det_score)}</td><td>${r.url ? `<button class="ghost" data-resend="${esc(r.url)}" data-title="${esc(r.title)}">Reenviar</button>` : ""}</td></tr>`
-      ).join("") || `<tr><td colspan="7" class="empty">nenhuma vaga registrada ainda</td></tr>`;
+        `<tr><td class="mono">${fmtShort(r.analyzed_at)}</td><td>${esc(r.company)}</td><td>${titleCell(r.title, r.url)}</td><td>${esc(r.location)}</td><td class="mono">${esc(r.source)}</td><td>${scorePill(r.det_score)}</td><td>${scorePill(r.ia_score)}</td><td>${r.url ? `<button class="ghost" data-resend="${esc(r.url)}" data-title="${esc(r.title)}">Reenviar</button>` : ""}</td></tr>`
+      ).join("") || `<tr><td colspan="8" class="empty">nenhuma vaga registrada ainda</td></tr>`;
       $("jobs-pager").innerHTML = pagerHTML(rows.length, jobsPage, size, "jobsGo");
     }
     async function loadGaps() {
@@ -1410,6 +1666,7 @@ details.block > .body { padding: 0 16px 16px; }
       loadSheets();
     }));
     $("sheet-days").onchange = () => loadSheets();
+    $("sheet-entrevista").onchange = () => { sheetPage = 0; renderSheets(); };
     $("sheet-q").oninput = () => { sheetPage = 0; renderSheets(); };
     $("jobs-q").oninput = () => { jobsPage = 0; renderJobs(); };
     $("gap-days").onchange = () => loadGaps();
@@ -1419,7 +1676,31 @@ details.block > .body { padding: 0 16px 16px; }
       const r = await j(`/api/sheets?tab=${sheetTab}&limit=400&days=${days}${force ? "&force=1" : ""}`);
       window._sheet = r;
       sheetPage = 0;
+      populateInterviewFilter(r.rows || []);
       renderSheets();
+    }
+    const ENT_NONE = ["", "sem retorno", "não", "nao", "no", "n/a", "na", "-", "default", "descartado", "rejeitado", "reprovado", "aguardando", "pendente", "em análise", "em analise", "nenhuma", "não fiz", "nao fiz"];
+    function entReal(v) { const s = String(v ?? "").trim().toLowerCase(); return !!s && !ENT_NONE.includes(s); }
+    function populateInterviewFilter(rows) {
+      const sel = $("sheet-entrevista");
+      if (!sel) return;
+      const cur = sel.value || "";
+      const seen = new Set();
+      (rows || []).forEach((r) => { const v = String(r.Entrevista ?? "").trim(); if (v) seen.add(v); });
+      const values = [...seen].sort((a, b) => a.localeCompare(b, "pt-BR"));
+      let html = `<option value="">Entrevista: todas</option>`;
+      html += `<option value="__has__">Com entrevista</option>`;
+      html += `<option value="__none__">Sem entrevista</option>`;
+      values.forEach((v) => { html += `<option value="${esc(v)}">${esc(v)}</option>`; });
+      sel.innerHTML = html;
+      sel.value = cur;
+    }
+    function matchInterview(r, filter) {
+      if (!filter) return true;
+      const v = String(r.Entrevista ?? "").trim();
+      if (filter === "__has__") return entReal(v);
+      if (filter === "__none__") return !entReal(v);
+      return v.toLowerCase() === filter.toLowerCase();
     }
     function renderSheets() {
       const d = window._sheet;
@@ -1428,24 +1709,33 @@ details.block > .body { padding: 0 16px 16px; }
       const s = d.summary || {};
       const cards = [["Total", s.total], ["Aplicadas", s.applied], ["Entrevistas", s.interview], ["Score médio", s.avg_score], ["Remotas", s.remote]];
       if (sheetTab === "rejected") cards.push(["Visto?", s.visa_block]);
+      if (sheetTab === "all" && s.rejected !== undefined) cards.push(["Rejeitadas", s.rejected]);
       $("sheet-cards").innerHTML = cards.filter((c) => c[1] !== undefined && c[1] !== null)
         .map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
       let rows = d.rows || [];
       const q = ($("sheet-q").value || "").toLowerCase().trim();
       if (q) rows = rows.filter((r) => `${r.company || ""} ${r.title || ""}`.toLowerCase().includes(q));
+      const entFilter = $("sheet-entrevista") ? ($("sheet-entrevista").value || "") : "";
+      if (entFilter) rows = rows.filter((r) => matchInterview(r, entFilter));
       const size = 25;
       const pages = Math.max(1, Math.ceil(rows.length / size));
       if (sheetPage > pages - 1) sheetPage = pages - 1;
       const slice = rows.slice(sheetPage * size, (sheetPage + 1) * size);
+      const tipoCell = (r) => `<span class="chip ${r._tab === "rejected" ? "no" : "yes"}">${r._tab === "rejected" ? "Rejeitada" : "Compatível"}</span>`;
       if (sheetTab === "rejected") {
         $("sheet-head").innerHTML = "<tr><th>Data</th><th>Empresa</th><th>Título</th><th>Score</th><th>Visto?</th><th>Remota</th><th>Skills</th></tr>";
         $("sheet-body").innerHTML = slice.map((r) =>
           `<tr><td class="mono">${esc(r.Date)}</td><td>${esc(r.company)}</td><td>${titleCell(r.title, r.job_url)}</td><td>${scorePill(r.Score)}</td><td>${truncCell(r["Visto?"], 60)}</td><td>${yesChip(r.is_remote)}</td><td>${skillsCell(r.SKILLS_DA_VAGA)}</td></tr>`
         ).join("") || `<tr><td colspan="7" class="empty">sem dados</td></tr>`;
-      } else {
-        $("sheet-head").innerHTML = "<tr><th>Data</th><th>Empresa</th><th>Título</th><th>Score</th><th>Aplicar</th><th>Entrevista</th><th>Remota</th><th>Local</th><th>Skills</th><th>OBS (IA)</th></tr>";
+      } else if (sheetTab === "all") {
+        $("sheet-head").innerHTML = "<tr><th>Data</th><th>Tipo</th><th>Empresa</th><th>Título</th><th>Score</th><th>Aplicar</th><th>Entrevista</th><th>Remota</th><th>Local</th><th>OBS (IA)</th><th>Skills</th></tr>";
         $("sheet-body").innerHTML = slice.map((r) =>
-          `<tr><td class="mono">${esc(r.Date)}</td><td>${esc(r.company)}</td><td>${titleCell(r.title, r.job_url)}</td><td>${scorePill(r.Score)}</td><td>${yesChip(r.Apply)}</td><td>${interviewChip(r.Entrevista)}</td><td>${yesChip(r.is_remote)}</td><td>${truncCell(r.location, 40)}</td><td>${skillsCell(r.SKILLS_DA_VAGA)}</td><td>${truncCell(r.OBS, 110)}</td></tr>`
+          `<tr><td class="mono">${esc(r.Date)}</td><td>${tipoCell(r)}</td><td>${esc(r.company)}</td><td>${titleCell(r.title, r.job_url)}</td><td>${scorePill(r.Score)}</td><td>${yesChip(r.Apply)}</td><td>${interviewChip(r.Entrevista)}</td><td>${yesChip(r.is_remote)}</td><td>${truncCell(r.location, 40)}</td><td>${truncCell(r.OBS, 160)}</td><td>${skillsCell(r.SKILLS_DA_VAGA)}</td></tr>`
+        ).join("") || `<tr><td colspan="11" class="empty">sem dados</td></tr>`;
+      } else {
+        $("sheet-head").innerHTML = "<tr><th>Data</th><th>Empresa</th><th>Título</th><th>Score</th><th>Aplicar</th><th>Entrevista</th><th>Remota</th><th>Local</th><th>OBS (IA)</th><th>Skills</th></tr>";
+        $("sheet-body").innerHTML = slice.map((r) =>
+          `<tr><td class="mono">${esc(r.Date)}</td><td>${esc(r.company)}</td><td>${titleCell(r.title, r.job_url)}</td><td>${scorePill(r.Score)}</td><td>${yesChip(r.Apply)}</td><td>${interviewChip(r.Entrevista)}</td><td>${yesChip(r.is_remote)}</td><td>${truncCell(r.location, 40)}</td><td>${truncCell(r.OBS, 160)}</td><td>${skillsCell(r.SKILLS_DA_VAGA)}</td></tr>`
         ).join("") || `<tr><td colspan="10" class="empty">sem dados</td></tr>`;
       }
       $("sheet-pager").innerHTML = pagerHTML(rows.length, sheetPage, size, "sheetGo");
@@ -1491,7 +1781,7 @@ details.block > .body { padding: 0 16px 16px; }
 function pt(key) { return KEY_PT[key] || key; }
 const CONFIG_SECTIONS = [
       { n: 1, title: "Busca", desc: "O que procurar.", fields: [
-        { key: "search_query", label: "Termos de busca", type: "textarea", rows: 5, help: 'Separe alternativas com OR. Ex.: "Site Reliability Engineer" OR SRE OR DevOps' },
+        { key: "search_query", label: "Termos de busca", type: "textarea", rows: 5, help: 'Separe alternativas com OR. Ex.: "Engenheiro de Software" OR Developer OR Backend' },
         { key: "hours_old", label: "Janela de busca (horas)", type: "select", numeric: true, options: [24, 36, 48, 72, 168], help: "24, 36, 48, 72 ou 168 (1 semana)." },
         { key: "results_per_source", label: "Vagas por fonte", type: "number", help: "Por país (JobSpy), por banco e por empresa (InHire). Ex.: 500." },
       ]},
@@ -1500,7 +1790,7 @@ const CONFIG_SECTIONS = [
       { n: 4, title: "Filtros", desc: "O que descartar antes da análise.", fields: [
         { key: "title_blocklist", label: "Bloquear cargos", type: "lines", rows: 10, help: "Um termo por linha. Ex.: estágio, gerente, frontend." },
         { key: "company_blocklist", label: "Bloquear empresas", type: "lines", rows: 6, help: "Uma empresa por linha. Ex.: jobgether." },
-        { key: "bank_include_keywords", label: "Palavras-chave (Gupy/Workday)", type: "lines", rows: 6, help: "Um termo por linha. Ex.: sre, devops, cloud." },
+        { key: "bank_include_keywords", label: "Palavras-chave (Gupy/Workday)", type: "lines", rows: 6, help: "Um termo por linha. Ex.: engenharia, desenvolvimento, dados." },
       ]},
       { n: 5, title: "IA (prompt)", desc: "Instruções da IA. Editável sem republicar o n8n.", fields: [
         { key: "prompt", label: "System prompt", type: "textarea", rows: 18, help: "Mensagem de sistema enviada no payload (substitui a do n8n)." },
@@ -1522,9 +1812,9 @@ const CONFIG_SECTIONS = [
       { n: 2, title: "Objetivo", desc: "O que procura e cargos-alvo.", fields: [
         { key: "professional_objective", label: "Objetivo profissional", type: "textarea", rows: 6, help: "Resumo em 2-4 linhas." },
         { key: "target_roles.primary", label: "Cargos-alvo", type: "lines", rows: 5, help: "Um por linha. Ex.: Site Reliability Engineer" },
-        { key: "target_roles.adjacent", label: "Cargos próximos", type: "lines", rows: 4, help: "Ex.: Platform Engineer, Cloud Engineer" },
-        { key: "target_roles.also_acceptable", label: "Também aceitáveis", type: "lines", rows: 4, help: "Ex.: DevOps Engineer" },
-        { key: "seniority.target", label: "Senioridade alvo", type: "text", help: "Ex.: SRE Sênior" },
+        { key: "target_roles.adjacent", label: "Cargos próximos", type: "lines", rows: 4, help: "Ex.: Arquiteto de Software" },
+        { key: "target_roles.also_acceptable", label: "Também aceitáveis", type: "lines", rows: 4, help: "Ex.: Engenheiro Backend" },
+        { key: "seniority.target", label: "Senioridade alvo", type: "text", help: "Ex.: Engenheiro de Software Sênior" },
         { key: "seniority.open_to_levels", label: "Níveis abertos", type: "lines", rows: 3 },
         { key: "seniority.evaluation_rule", label: "Regra de avaliação", type: "textarea", rows: 3 },
       ]},
@@ -1533,7 +1823,7 @@ const CONFIG_SECTIONS = [
       { n: 5, title: "Competências", desc: "Grupos por você. Cada skill tem grupo e nível; informe as empresas onde usou.", type: "skills" },
       { n: 6, title: "Apelidos de skills", desc: "Nomes alternativos que as vagas usam para a mesma skill (ex.: kubernetes → k8s, eks, gke). Usados no Mercado & Gaps.", type: "aliases" },
       { n: 7, title: "Preferências de vaga", desc: "O que aceitar e evitar.", fields: [
-        { key: "desired_job_types", label: "Tipos desejados", type: "lines", rows: 6, help: "Ex.: SRE, Cloud Engineering" },
+        { key: "desired_job_types", label: "Tipos desejados", type: "lines", rows: 6, help: "Ex.: Backend, Frontend" },
         { key: "undesired_job_types", label: "Tipos indesejados", type: "lines", rows: 8, help: "Ex.: Full Stack, Front-end" },
         { key: "restrictions", label: "Restrições", type: "lines", rows: 5, help: "Ex.: presencial fora do escopo; visto." },
       ]},
@@ -1712,10 +2002,10 @@ const CONFIG_SECTIONS = [
         c.appendChild(cardHead(`Experiência ${index + 1}`, () => { arr.splice(index, 1); renderExperience(container); schedulePreview(); }));
         const row3 = document.createElement("div"); row3.className = "grid3";
         row3.appendChild(labeled("Empresa", textInput(item.company, (v) => { item.company = v; schedulePreview(); }, "Ex.: Empresa Exemplo")));
-        row3.appendChild(labeled("Cargo", textInput(item.role, (v) => { item.role = v; schedulePreview(); }, "Ex.: Analista de Infraestrutura")));
+        row3.appendChild(labeled("Cargo", textInput(item.role, (v) => { item.role = v; schedulePreview(); }, "Ex.: Engenheiro de Software")));
         row3.appendChild(labeled("Período", periodInputs(item.period, (v) => { item.period = v; item.current = /present|atual/i.test(v); schedulePreview(); })));
         c.appendChild(row3);
-        c.appendChild(labeled("Foco", textInput(item.focus, (v) => { item.focus = v; schedulePreview(); }, "Ex.: SRE, observabilidade e incidentes")));
+        c.appendChild(labeled("Foco", textInput(item.focus, (v) => { item.focus = v; schedulePreview(); }, "Ex.: Backend, microsserviços")));
         c.appendChild(labeled("Atividades", linesInput(item.responsibilities, (v) => { item.responsibilities = v; schedulePreview(); }, 8, "Uma atividade por linha")));
         c.appendChild(labeled("Tecnologias", experienceSkillsCombo(item)));
         grid.appendChild(c);
@@ -2079,7 +2369,7 @@ function skillRow(skill, groups, kind, container) {
   const wrap = document.createElement("div");
   const row = document.createElement("div"); row.className = "skill-row";
   const name = document.createElement("input"); name.type = "text";
-  name.placeholder = "Ex.: Oracle Cloud Infrastructure";
+  name.placeholder = "Ex.: Acme Corp";
   name.value = skill.label || skill.name || "";
   name.oninput = () => { skill.label = name.value; if (!skill.name) skill.name = slug(name.value); schedulePreview(); };
   const grp = document.createElement("select");
@@ -2133,7 +2423,7 @@ function skillRow(skill, groups, kind, container) {
   lim.value = skill.limitations || "";
   lim.oninput = () => { skill.limitations = lim.value || undefined; schedulePreview(); };
   const notes = document.createElement("textarea"); notes.rows = 2;
-  notes.placeholder = "Observação (opcional) — ex.: outras ferramentas OCI";
+  notes.placeholder = "Observação (opcional) — ex.: outras ferramentas";
   notes.value = skill.notes || "";
   notes.oninput = () => { skill.notes = notes.value || undefined; schedulePreview(); };
   extra.appendChild(ev); extra.appendChild(lim); extra.appendChild(notes);
@@ -2545,6 +2835,23 @@ function renderSections(container, sections, curated) {
     }
 
     // ---------------------------------------------------------------- agenda
+    const SOURCE_OPTS = [["linkedin", "LinkedIn"], ["indeed", "Indeed"], ["gupy", "Gupy"], ["workday", "Workday"], ["inhire", "InHire"]];
+    function renderSourceFreq(scanSources, freq) {
+      const box = $("sch-sources");
+      if (!box) return;
+      const scan = (scanSources && scanSources.length) ? scanSources : ["linkedin", "indeed", "gupy", "workday", "inhire"];
+      box.innerHTML = SOURCE_OPTS.map(([k, l]) => {
+        const v = (freq || {})[k] === "daily" ? "daily" : "every";
+        const disabled = !scan.includes(k);
+        return `<div class="cred-row" style="grid-template-columns:1fr 200px">
+          <div><span>${l}</span> <span class="mono" style="font-size:10px;color:var(--dim)">${k}</span>${disabled ? ' <span class="chip no">desabilitada</span>' : ""}</div>
+          <select data-src="${k}" ${disabled ? "disabled" : ""}>
+            <option value="every" ${v === "every" ? "selected" : ""}>Toda execução</option>
+            <option value="daily" ${v === "daily" ? "selected" : ""}>1x por dia</option>
+          </select>
+        </div>`;
+      }).join("");
+    }
     async function loadSchedule() {
       const r = await j("/api/schedule");
       const s = r.schedule || {};
@@ -2552,6 +2859,7 @@ function renderSections(container, sections, curated) {
       $("sch-times").value = (s.times || []).join(", ");
       $("sch-digest").value = s.digest_at || "";
       $("sch-grace").value = s.grace_minutes ?? 30;
+      renderSourceFreq(r.scan_sources || [], s.source_frequency || {});
       renderNext(r.next_runs || []);
     }
     function renderNext(list) {
@@ -2560,12 +2868,15 @@ function renderSections(container, sections, curated) {
       ).join("") || `<div class="empty">sem horários</div>`;
     }
     async function saveSchedule() {
+      const freq = {};
+      document.querySelectorAll("#sch-sources select").forEach((sel) => { freq[sel.dataset.src] = sel.value; });
       const payload = {
         enabled: $("sch-enabled").checked,
         timezone: "America/Sao_Paulo",
         times: $("sch-times").value.split(",").map((s) => s.trim()).filter(Boolean),
         digest_at: $("sch-digest").value.trim(),
-        misfire_grace_minutes: parseInt($("sch-grace").value || "30", 10)
+        misfire_grace_minutes: parseInt($("sch-grace").value || "30", 10),
+        source_frequency: freq
       };
       const r = await fetch("/api/schedule", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const jr = await r.json();
@@ -2994,7 +3305,7 @@ def _gaps_data(days: int) -> dict:
 
 def _gaps_prompt(data: dict) -> str:
     lines = [
-        "Você é um coach de carreira SRE/DevOps/Cloud. Analise os dados de mercado abaixo e responda em português, de forma direta, o que o candidato deve PRIORIZAR para estudar ou melhorar.",
+        "Você é um coach de carreira em tecnologia. Analise os dados de mercado abaixo e responda em português, de forma direta, o que o candidato deve PRIORIZAR para estudar ou melhorar.",
         f"Vagas analisadas: {data.get('total_jobs')} | skills distintas: {data.get('distinct_skills')} | cobertura forte: {data.get('coverage_pct')}%.",
         "",
         "Mais pedidas (skill — nº de vagas — situação: domina/parcial/faltando):",
@@ -3010,12 +3321,118 @@ def _gaps_prompt(data: dict) -> str:
     return "\n".join(lines)
 
 
+STAGE_LABELS: dict[str, tuple[str, str]] = {
+    "title_or_description": ("Blocklist título/descrição", "Cargos fora do escopo (dev, QA, suporte, gestão) e barreiras (visto, idioma, clearance)."),
+    "company_blocklist": ("Empresas bloqueadas", "Aggregators/spam que não são empregadores reais."),
+    "already_processed": ("Já processadas", "Vagas já vistas em execuções anteriores (memória vagas_processadas.txt)."),
+    "dedupe_batch": ("Duplicatas no lote", "Mesma URL ou empresa+título+localização entre fontes."),
+    "brazil_onsite": ("Presencial no Brasil", "Presencial BR descartado (aceita remoto e híbrido)."),
+    "work_modes": ("Modalidade", "Fora das modalidades habilitadas em config.json (remoto/híbrido)."),
+    "prefilter_title": ("Pré-filtro por título", "Função fora do alvo (profile.yaml → title_matching)."),
+}
+
+
+def _collect_data() -> dict:
+    """Live collection detail: state, filter stages (with counts + explanation),
+    recently discarded jobs (with reason) and the event stream."""
+    from collections import Counter
+
+    state = tel.read_state()
+    all_discarded = tel.read_discarded(limit=10000)
+    counts: Counter = Counter(r.get("stage") or "?" for r in all_discarded)
+
+    stage_order = [
+        "title_or_description", "company_blocklist", "already_processed",
+        "dedupe_batch", "brazil_onsite", "work_modes", "prefilter_title",
+    ]
+    stages = []
+    seen_stages: set[str] = set()
+    for stage in stage_order:
+        label, desc = STAGE_LABELS.get(stage, (stage, ""))
+        stages.append({"stage": stage, "label": label, "desc": desc, "discarded": counts.get(stage, 0)})
+        seen_stages.add(stage)
+    for stage, n in counts.items():
+        if stage in seen_stages:
+            continue
+        label, desc = STAGE_LABELS.get(stage, (stage, ""))
+        stages.append({"stage": stage, "label": label, "desc": desc, "discarded": n})
+
+    recent = []
+    for r in all_discarded[:300]:
+        rec = dict(r)
+        rec["stage_label"] = STAGE_LABELS.get(rec.get("stage") or "", (rec.get("stage") or "", ""))[0]
+        recent.append(rec)
+
+    return {
+        "ok": True,
+        "state": state,
+        "stages": stages,
+        "discarded": recent,
+        "events": tel.read_events(limit=60),
+    }
+
+
+def _profile_ai_prompt(linkedin: str, curriculo: str, answers: str, current_yaml: str) -> str:
+    lines = [
+        "Você é um especialista em currículos e carreiras de tecnologia.",
+        "Monte o arquivo profile.yaml do pipeline CareerOps a partir dos dados da pessoa.",
+        "Responda SOMENTE com YAML válido, sem comentários, sem ```, sem texto fora do YAML.",
+        "",
+        "REGRAS:",
+        "- Mantenha exatamente as MESMAS chaves e estrutura do profile.yaml de referência abaixo.",
+        "- Substitua TODOS os valores pessoais pelos dados reais da pessoa (não copie o conteúdo de referência).",
+        "- Preserve como estão as seções instrucionais: level_definitions, source_definitions, status_definitions, classification_rules, matching_guidance, title_matching e skill_aliases — a menos que o usuário peça mudança.",
+        "- Nível de skill (hands_on/working_knowledge/learning/conceptual/none): curso ou certificação NÃO é hands_on; hands_on exige uso profissional declarado.",
+        "- Não invente experiência, empresa, cargo ou tecnologia; use apenas o que a pessoa declarou.",
+        "- Se faltar informação, deixe o campo vazio ou com lista vazia, não invente.",
+        "",
+        "LinkedIn: " + (linkedin or "(não informado)"),
+        "",
+        "Currículo:",
+        curriculo or "(não informado)",
+        "",
+        "Respostas da pessoa:",
+        answers or "(não informado)",
+        "",
+        "profile.yaml de referência (estrutura e chaves a seguir):",
+        current_yaml,
+    ]
+    return "\n".join(lines)
+
+
+def _version_profile() -> str | None:
+    """Archive the current profile.yaml into a timestamped version file."""
+    if not PROFILE_PATH.exists():
+        return None
+    try:
+        PROFILE_VERSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        dest = PROFILE_VERSIONS_DIR / f"profile-{stamp}.yaml"
+        dest.write_text(PROFILE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+        return dest.name
+    except OSError:
+        return None
+
+
+def _list_profile_versions() -> list[dict]:
+    if not PROFILE_VERSIONS_DIR.is_dir():
+        return []
+    out = []
+    for f in sorted(PROFILE_VERSIONS_DIR.glob("profile-*.yaml"), reverse=True):
+        try:
+            st = f.stat()
+            out.append({"name": f.name, "size": st.st_size,
+                        "mtime": datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds")})
+        except OSError:
+            continue
+    return out
+
+
 def _load_secrets() -> dict:
     try:
         return json.loads(SECRETS_PATH.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
         return {}
-
 
 def _save_secrets(data: dict) -> None:
     SECRETS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -3088,6 +3505,41 @@ def _sheet_urls() -> set[str]:
         except Exception:  # noqa: BLE001
             continue
     return urls
+
+
+def _sheet_score_map() -> dict[str, str]:
+    """Map job_url -> IA score (Score column) across Jobs + Rejected-Jobs."""
+    score_map: dict[str, str] = {}
+    for tab in ("jobs", "rejected"):
+        try:
+            data = sheets_mod.read_tab(tab)
+            for r in data.get("rows", []) or []:
+                u = str(r.get("job_url") or "").strip()
+                if u and str(r.get("Score") or "").strip():
+                    score_map.setdefault(u, str(r.get("Score")).strip())
+        except Exception:  # noqa: BLE001
+            continue
+    return score_map
+
+
+def _all_summary(rows) -> dict:
+    def count_true(field):
+        return sum(1 for r in rows if str(r.get(field, "")).strip().lower() in {"sim", "yes", "true", "1"})
+
+    scores = []
+    for r in rows:
+        try:
+            scores.append(float(str(r.get("Score")).replace(",", ".")))
+        except Exception:  # noqa: BLE001
+            continue
+    return {
+        "total": len(rows),
+        "applied": count_true("Apply"),
+        "interview": sum(1 for r in rows if sheets_mod.is_interview_value(r.get("Entrevista"))),
+        "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+        "remote": count_true("is_remote"),
+        "rejected": sum(1 for r in rows if r.get("_tab") == "rejected"),
+    }
 
 
 def _perms(path: Path):
@@ -3421,12 +3873,18 @@ class Handler(BaseHTTPRequestHandler):
             })
         if path == "/api/state":
             return self._json(200, tel.read_state())
+        if path == "/api/collect":
+            return self._json(200, _collect_data())
         if path == "/api/events":
             limit = int((qs.get("limit") or ["80"])[0])
             return self._json(200, tel.read_events(limit))
         if path == "/api/jobs":
             limit = int((qs.get("limit") or ["200"])[0])
-            return self._json(200, tel.read_jobs(limit))
+            rows = tel.read_jobs(limit)
+            score_map = _sheet_score_map()
+            for r in rows:
+                r["ia_score"] = score_map.get(str(r.get("url") or "").strip())
+            return self._json(200, rows)
         if path == "/api/jobs.csv":
             csv_bytes = b""
             p = tel.jobs_csv_path()
@@ -3434,12 +3892,37 @@ class Handler(BaseHTTPRequestHandler):
                 csv_bytes = p.read_bytes()
             return self._send(200, csv_bytes, "text/csv")
         if path == "/api/sheets":
-            tab = (qs.get("tab") or ["jobs"])[0]
-            if tab not in ("jobs", "rejected"):
-                tab = "jobs"
+            tab = (qs.get("tab") or ["all"])[0]
+            if tab not in ("jobs", "rejected", "all"):
+                tab = "all"
             force = (qs.get("force") or ["0"])[0] == "1"
             limit = int((qs.get("limit") or ["300"])[0])
             days = int((qs.get("days") or ["0"])[0])
+            if tab == "all":
+                merged: list[dict] = []
+                error = None
+                for t in ("jobs", "rejected"):
+                    d = sheets_mod.read_tab(t, force=force)
+                    if not d.get("ok"):
+                        error = d.get("error")
+                        continue
+                    for r in (d.get("rows") or []):
+                        rr = dict(r)
+                        rr["_tab"] = t
+                        merged.append(rr)
+                if not merged and error:
+                    return self._json(200, {"ok": False, "tab": "all", "tab_name": "Todos",
+                                            "error": error, "headers": [], "rows": [], "summary": {}})
+                rows = merged
+                if days > 0:
+                    cutoff = date.today() - timedelta(days=days - 1)
+                    rows = [r for r in rows if (_sheet_date(r.get("Date")) or date.min) >= cutoff]
+                rows = sorted(rows, key=lambda r: (_sheet_date(r.get("Date")) or date.min), reverse=True)
+                total = len(rows)
+                data = {"ok": True, "tab": "all", "tab_name": "Todos", "headers": [], "rows": rows[:limit],
+                        "returned": min(limit, total), "filtered_total": total,
+                        "summary": _all_summary(rows), "error": None}
+                return self._json(200, data)
             data = sheets_mod.read_tab(tab, force=force)
             rows = data.get("rows") or []
             if days > 0:
@@ -3475,9 +3958,22 @@ class Handler(BaseHTTPRequestHandler):
                                     "content": pth.read_text(encoding="utf-8")})
         if path == "/api/config":
             return self._json(200, {"ok": True, "config": _read_json(CONFIG_PATH)})
+        if path == "/api/profile/versions":
+            return self._json(200, {"ok": True, "versions": _list_profile_versions()})
+        if path == "/api/profile/version":
+            name = (qs.get("name") or [""])[0]
+            f = PROFILE_VERSIONS_DIR / name
+            if not name.startswith("profile-") or "/" in name or "\\" in name or not f.is_file():
+                return self._json(404, {"ok": False, "error": "versão inválida"})
+            try:
+                return self._json(200, {"ok": True, "name": name, "content": f.read_text(encoding="utf-8")})
+            except OSError as e:  # noqa: BLE001
+                return self._json(400, {"ok": False, "error": str(e)})
         if path == "/api/schedule":
-            sched = get_schedule(_read_json(CONFIG_PATH))
-            return self._json(200, {"ok": True, "schedule": sched, "next_runs": next_runs(sched)})
+            cfg = _read_json(CONFIG_PATH)
+            sched = get_schedule(cfg)
+            return self._json(200, {"ok": True, "schedule": sched, "next_runs": next_runs(sched),
+                                    "scan_sources": cfg.get("scan_sources") or []})
         if path == "/api/schedule/render":
             schedule = get_schedule(_read_json(CONFIG_PATH))
             return self._send(200, render_crontab(schedule, PROJECT_DIR).encode("utf-8"), "text/plain")
@@ -3516,6 +4012,8 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 return self._json(400, {"ok": False, "error": err})
             try:
+                if pth.name == "profile.yaml":
+                    _version_profile()
                 write_allowed_file(pth, text)
             except Exception as e:  # noqa: BLE001
                 return self._json(400, {"ok": False, "error": str(e)})
@@ -3554,6 +4052,90 @@ class Handler(BaseHTTPRequestHandler):
                     pass
             return self._json(200, {"ok": resp.status_code == 200, "status_code": resp.status_code,
                                     "title": job["title"], "company": job["company"]})
+        if path == "/api/collect/clear":
+            tel.clear_events()
+            return self._json(200, {"ok": True})
+        if path == "/api/scan":
+            source = str(payload.get("source") or "").strip().lower()
+            if source not in ("linkedin", "indeed", "gupy", "workday", "inhire", "banks", "jobspy", "all"):
+                return self._json(400, {"ok": False, "error": "fonte inválida"})
+            if source == "banks":
+                sources = ["gupy", "workday"]
+            elif source == "jobspy":
+                sources = ["linkedin", "indeed"]
+            elif source == "all":
+                sources = []
+            else:
+                sources = [source]
+            env = dict(os.environ)
+            env.setdefault("PYTHONPATH", str(BASE_DIR / "src"))
+            cmd = [sys.executable, "-m", "careerops.main"]
+            if sources:
+                cmd += ["--sources", ",".join(sources)]
+            try:
+                log_dir = BASE_DIR / "logs"
+                log_dir.mkdir(parents=True, exist_ok=True)
+                log_path = log_dir / f"careerops-manual-{datetime.now():%Y%m%d-%H%M%S}.log"
+                with log_path.open("a", encoding="utf-8") as f:
+                    subprocess.Popen(cmd, cwd=str(BASE_DIR), env=env, stdout=f, stderr=f, start_new_session=True)
+            except Exception as e:  # noqa: BLE001
+                return self._json(400, {"ok": False, "error": str(e)})
+            return self._json(200, {"ok": True, "sources": sources or ["config"],
+                                    "log": log_path.name})
+        if path == "/api/profile/ai":
+            linkedin = str(payload.get("linkedin") or "").strip()
+            curriculo = str(payload.get("curriculo") or "").strip()
+            answers = str(payload.get("answers") or "").strip()
+            if not answers and not curriculo:
+                return self._json(400, {"ok": False, "error": "informe as respostas ou o currículo"})
+            import yaml
+            try:
+                current_yaml = PROFILE_PATH.read_text(encoding="utf-8")
+            except OSError:
+                current_yaml = ""
+            prompt = _profile_ai_prompt(linkedin, curriculo, answers, current_yaml)
+            webhook = os.environ.get("N8N_PERFIL_WEBHOOK_URL") or "http://n8n:5678/webhook/careerops-perfil"
+            try:
+                r = requests.post(webhook, json={"prompt": prompt}, timeout=180)
+                if r.status_code != 200:
+                    return self._json(400, {"ok": False, "error": f"n8n HTTP {r.status_code}"})
+                body = r.json()
+                if isinstance(body, list) and body:
+                    body = body[0]
+                if isinstance(body, dict):
+                    text = str(body.get("text") or body.get("response") or body.get("content") or "")
+                else:
+                    text = str(body or "")
+                text = text.strip()
+                if text.startswith("```"):
+                    text = re.sub(r"^```(?:yaml|yml)?\s*", "", text)
+                    text = re.sub(r"\s*```$", "", text)
+                data = yaml.safe_load(text)
+                if not isinstance(data, dict):
+                    return self._json(400, {"ok": False, "error": "a IA não retornou um YAML válido de objeto"})
+            except Exception as e:  # noqa: BLE001
+                return self._json(400, {"ok": False, "error": str(e)})
+            try:
+                _version_profile()
+                write_allowed_file(PROFILE_PATH, yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
+            except Exception as e:  # noqa: BLE001
+                return self._json(400, {"ok": False, "error": str(e)})
+            return self._json(200, {"ok": True, "message": "profile.yaml atualizado"})
+        if path == "/api/profile/restore":
+            name = str(payload.get("name") or "")
+            f = PROFILE_VERSIONS_DIR / name
+            if not name.startswith("profile-") or "/" in name or "\\" in name or not f.is_file():
+                return self._json(404, {"ok": False, "error": "versão inválida"})
+            try:
+                import yaml
+                data = yaml.safe_load(f.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    return self._json(400, {"ok": False, "error": "versão inválida (YAML)"})
+                _version_profile()
+                write_allowed_file(PROFILE_PATH, yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
+                return self._json(200, {"ok": True})
+            except Exception as e:  # noqa: BLE001
+                return self._json(400, {"ok": False, "error": str(e)})
         if path == "/api/resend":
             url = str(payload.get("url") or "")
             if not url:
@@ -3739,6 +4321,8 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 return self._json(400, {"ok": False, "error": err})
             try:
+                if pth.name == "profile.yaml":
+                    _version_profile()
                 write_allowed_file(pth, content)
             except Exception as e:  # noqa: BLE001
                 return self._json(400, {"ok": False, "error": str(e)})
@@ -3765,6 +4349,9 @@ class Handler(BaseHTTPRequestHandler):
                 "digest_at": str(schedule.get("digest_at") or "").strip(),
                 "misfire_grace_minutes": int(schedule.get("misfire_grace_minutes", 120)),
             }
+            freq = schedule.get("source_frequency")
+            if isinstance(freq, dict) and freq:
+                config["schedule"]["source_frequency"] = freq
             try:
                 _write_config(config)
             except Exception as e:  # noqa: BLE001

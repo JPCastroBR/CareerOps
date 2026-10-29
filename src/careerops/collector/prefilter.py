@@ -4,11 +4,11 @@ Decides whether a job title is worth sending to the AI, prioritizing the
 *function* over isolated keywords. Rules live in ``profile.yaml`` under
 ``title_matching`` (single source of truth); this module only applies them.
 
-Decision rules:
+Decision rules (target keywords have priority — "se busca SRE, libera"):
 
-1. A **hard** off-profile category always discards (e.g. developer/full stack).
-2. Otherwise, a match in ``target`` keeps the job (rescues soft categories
-   such as architect/security/tech_lead).
+1. A match in ``target`` always keeps the job (rescues *any* off-profile hit,
+   e.g. "Software Engineer (SRE)" is kept because of "sre").
+2. Otherwise, a **hard** off-profile category discards (developer/full stack).
 3. Otherwise, a **soft** off-profile category discards.
 4. No match at all -> keep as *ambiguous* (never discard unknown titles).
 
@@ -69,14 +69,14 @@ def classify_title(title, rules: Rules) -> TitleDecision:
 
     target_hits = [cat for cat, pats in rules.target if any(p.search(text) for p in pats)]
 
-    # 1. Hard off-profile always discards.
+    # 1. Target function has priority: it rescues any off-profile keyword.
+    if target_hits:
+        return TitleDecision(keep=True, reason=f"kept_target:{target_hits[0]}")
+
+    # 2. Hard off-profile without a target hit discards.
     for category, hard, patterns in rules.off_profile:
         if hard and any(p.search(text) for p in patterns):
             return TitleDecision(keep=False, reason=f"off_profile_title:{category}")
-
-    # 2. Target function rescues soft off-profile categories.
-    if target_hits:
-        return TitleDecision(keep=True, reason=f"kept_target:{target_hits[0]}")
 
     # 3. Soft off-profile without a target hit discards.
     for category, hard, patterns in rules.off_profile:
@@ -97,10 +97,19 @@ def apply_prefilter(df, rules: Rules):
 
     reasons: Counter = Counter()
     keep_mask: list[bool] = []
-    for title in df.get("title", []):
+    dropped_details: list[dict] = []
+    for i, title in enumerate(df.get("title", [])):
         decision = classify_title(title, rules)
         reasons[decision.reason] += 1
         keep_mask.append(decision.keep)
+        if not decision.keep:
+            dropped_details.append({
+                "company": str(df["company"].iloc[i]) if "company" in df else "",
+                "title": str(title),
+                "location": str(df["location"].iloc[i]) if "location" in df else "",
+                "url": str(df["job_url"].iloc[i]) if "job_url" in df else "",
+                "reason": decision.reason,
+            })
 
     kept = df[keep_mask] if keep_mask else df
     ambiguous = (
@@ -114,5 +123,6 @@ def apply_prefilter(df, rules: Rules):
         "discarded": len(df) - int(sum(keep_mask)),
         "ambiguous": ambiguous,
         "by_reason": dict(reasons),
+        "dropped_details": dropped_details,
     }
     return kept, stats

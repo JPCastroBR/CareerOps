@@ -1,0 +1,111 @@
+{
+  "name": "careerops-perfil",
+  "description": "Gera/atualiza o profile.yaml a partir do currículo + LinkedIn + respostas do usuário. Recebe {prompt} no webhook e responde com o YAML da IA.",
+  "active": true,
+  "isArchived": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "careerops-perfil",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -320,
+        320
+      ],
+      "id": "c4dc11c8-e1ba-4226-8cce-3d9e0b5681c8",
+      "name": "Webhook",
+      "webhookId": "0327152c-e3d6-49a6-ad6c-4b7cd7340957"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.prompt }}",
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        0,
+        320
+      ],
+      "id": "256fc830-542a-4a80-91ca-2b443a073f53",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        80,
+        520
+      ],
+      "id": "997b2bb3-4d9a-48fb-80f9-df06a52d07d1",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "zXajfEyPnxUoFzej",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "versionId": "e78be559-8921-4797-b239-3a26ee4b394c",
+  "activeVersionId": null,
+  "id": "4d6c7150-1770-451a-8e0d-831da569d9c7",
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "createdAt": "2026-10-29T00:00:00.000Z",
+  "updatedAt": "2026-10-29T00:00:00.000Z"
+}

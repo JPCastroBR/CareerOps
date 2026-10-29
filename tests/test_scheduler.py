@@ -53,5 +53,34 @@ class DueTests(unittest.TestCase):
         self.assertEqual(sched.due_slots(s, now=now, state={"runs": {}}), [])
 
 
+class SourcePlanTests(unittest.TestCase):
+    def _config(self, freq):
+        return {
+            "scan_sources": ["linkedin", "indeed", "gupy", "workday", "inhire"],
+            "schedule": {"source_frequency": freq},
+        }
+
+    def test_no_frequency_keeps_legacy(self):
+        plan = sched.source_plan({"scan_sources": ["linkedin", "indeed", "gupy"]})
+        self.assertFalse(plan["configured"])
+        self.assertEqual(plan["every"], ["linkedin", "indeed", "gupy"])
+        self.assertEqual(plan["daily"], [])
+
+    def test_every_and_daily_split(self):
+        freq = {"linkedin": "every", "indeed": "every", "gupy": "daily",
+                "workday": "daily", "inhire": "daily"}
+        plan = sched.source_plan(self._config(freq))
+        self.assertTrue(plan["configured"])
+        self.assertEqual(plan["every"], ["linkedin", "indeed"])
+        self.assertEqual(plan["daily"], ["gupy", "workday", "inhire"])
+
+    def test_pending_first_slot_vs_later(self):
+        freq = {"linkedin": "every", "indeed": "every", "gupy": "daily"}
+        plan = sched.source_plan({"scan_sources": ["linkedin", "indeed", "gupy"],
+                                  "schedule": {"source_frequency": freq}})
+        self.assertEqual(sched.pending_sources(plan, set()), ["linkedin", "indeed", "gupy"])
+        self.assertEqual(sched.pending_sources(plan, {"gupy"}), ["linkedin", "indeed"])
+
+
 if __name__ == "__main__":
     unittest.main()

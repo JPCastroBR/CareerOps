@@ -18,6 +18,20 @@ BR_LOCATION_RE = re.compile(r"brasil|brazil|\bbr\b", re.IGNORECASE)
 HYBRID_MARKERS_RE = re.compile(r"híbrido|hibrido|hybrid", re.IGNORECASE)
 ONSITE_MARKERS_RE = re.compile(r"presencial|onsite|on-site|on site", re.IGNORECASE)
 
+def _block_pattern(terms) -> str:
+    """Join blocklist terms into a word-boundary regex.
+
+    ``(?<![a-z0-9])`` / ``(?![a-z0-9])`` ensure a term only matches as a whole
+    word, not inside another word — e.g. ``"ia"`` must not block "Engenharia",
+    nor ``"ux"`` block "Linux". Multi-word phrases ("head of") still match.
+    """
+    return "|".join(
+        r"(?<![a-z0-9])" + re.escape(str(t)) + r"(?![a-z0-9])"
+        for t in terms
+        if str(t).strip()
+    )
+
+
 _TRUE_VALUES = {"true", "1", "yes", "sim", "remote", "remoto"}
 
 
@@ -84,7 +98,20 @@ def normalize_modes(modes) -> set[str]:
 
 
 def classify_modality(row) -> str:
-    """Best-effort modality: ``remote`` | ``hybrid`` | ``onsite`` | ``unknown``."""
+    """Best-effort modality: ``remote`` | ``hybrid`` | ``onsite`` | ``unknown``.
+
+    Prefers the structured ``modality`` field when the source provides it
+    (e.g. InHire ``workplaceType``), so text like "conversa presencial" or
+    "presencial 1x a cada 15 dias" can't misclassify a hybrid/remote job.
+    """
+    explicit = str(row.get("modality") or "").strip().lower()
+    if explicit == "remote":
+        return "remote"
+    if explicit == "hybrid":
+        return "hybrid"
+    if explicit in ("onsite", "local", "presencial", "on-site", "on site"):
+        return "onsite"
+
     text = " ".join(
         str(row.get(c, "") or "")
         for c in ("title", "description", "job_type", "job_level", "location")

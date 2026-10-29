@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from careerops.collector.inhire import (  # noqa: E402
     build_row,
+    classify_workplace,
     is_remote,
     parse_listing,
     slugify,
@@ -58,6 +59,15 @@ class InhireHelpersTests(unittest.TestCase):
         self.assertFalse(is_remote("On-site"))
         self.assertFalse(is_remote(None))
 
+    def test_classify_workplace(self):
+        self.assertEqual(classify_workplace("Remote"), "remote")
+        self.assertEqual(classify_workplace("Hybrid"), "hybrid")
+        self.assertEqual(classify_workplace("híbrido"), "hybrid")
+        self.assertEqual(classify_workplace("Presencial"), "onsite")
+        self.assertEqual(classify_workplace(""), "")
+        self.assertEqual(classify_workplace(None), "")
+
+
     def test_strip_html(self):
         self.assertEqual(strip_html("<p>Olá <b>mundo</b>&nbsp;!</p>"), "Olá mundo !")
 
@@ -75,6 +85,7 @@ class InhireHelpersTests(unittest.TestCase):
         self.assertEqual(row["title"], "Analista de Infraestrutura Pl")
         self.assertTrue(row["is_remote"])
         self.assertEqual(row["remote"], "remote")
+        self.assertEqual(row["modality"], "remote")
         self.assertEqual(row["job_type"], "PJ")
         self.assertEqual(row["source"], "inhire:gruposrm")
         self.assertEqual(

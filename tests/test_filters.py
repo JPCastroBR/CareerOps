@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from careerops.collector.filters import (
     to_bool, is_brazil_onsite, normalize_modes, classify_modality, modality_allowed,
+    _block_pattern,
 )  # noqa: E402
 
 
@@ -117,6 +118,46 @@ class WorkModesTests(unittest.TestCase):
         self.assertTrue(modality_allowed({"title": "SRE híbrido"}, ["remote", "hybrid"]))
         self.assertTrue(modality_allowed({"title": "SRE"}, ["remote"]))  # unknown preserved
         self.assertTrue(modality_allowed({"title": "SRE presencial"}, ["remote", "hybrid", "local"]))
+
+    def test_classify_prefers_structured_modality(self):
+        # "presencial" no texto não deve sobrescrever workplaceType hybrid/remote.
+        hybrid = {"modality": "hybrid", "description": "atuar presencial 1x a cada 15 dias"}
+        self.assertEqual(classify_modality(hybrid), "hybrid")
+        remote = {"modality": "remote", "description": "vaga remota... conversa presencial"}
+        self.assertEqual(classify_modality(remote), "remote")
+        onsite = {"modality": "onsite", "description": "modelo remoto"}
+        self.assertEqual(classify_modality(onsite), "onsite")
+
+    def test_classify_falls_back_to_text(self):
+        self.assertEqual(classify_modality({"title": "SRE", "description": "modelo híbrido"}), "hybrid")
+        self.assertEqual(classify_modality({"title": "SRE", "description": "presencial em SP"}), "onsite")
+        self.assertEqual(classify_modality({"title": "SRE", "is_remote": True}), "remote")
+
+
+class BlockPatternTests(unittest.TestCase):
+    def _matches(self, terms, text):
+        import re
+        rx = re.compile(_block_pattern(terms), re.IGNORECASE)
+        return bool(rx.search(text))
+
+    def test_word_boundary_not_substring(self):
+        # "ia" must NOT match inside "Engenharia" / "Reliability".
+        self.assertFalse(self._matches(["ia"], "Engenharia de Cloud"))
+        self.assertFalse(self._matches(["ia"], "Site Reliability Engineer"))
+        self.assertFalse(self._matches(["bi"], "Site Reliability Engineer"))
+        self.assertFalse(self._matches(["ux"], "Analista de Infraestrutura Linux/Unix"))
+        self.assertFalse(self._matches(["ui"], "Arquiteto de Soluções Cloud"))
+
+    def test_standalone_acronym_still_matches(self):
+        self.assertTrue(self._matches(["ia"], "Especialista em IA"))
+        self.assertTrue(self._matches(["ux"], "UX Designer"))
+
+    def test_multi_word_phrase_matches(self):
+        self.assertTrue(self._matches(["head of"], "Head of Infrastructure"))
+
+    def test_normal_term_matches(self):
+        self.assertTrue(self._matches(["junior"], "Analista Junior"))
+        self.assertTrue(self._matches(["manager"], "Engineering Manager"))
 
 
 if __name__ == "__main__":

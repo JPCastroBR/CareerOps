@@ -73,7 +73,7 @@ class DiscardOffProfileTitlesTests(unittest.TestCase):
 
     def test_management_and_architect_and_security(self):
         self.assert_discarded("Diretor(a) CTO AWS", "management")
-        self.assert_discarded("HEAD DE HYBRID CLOUD OPERATIONS", "management")
+        self.assert_discarded("Head of Engineering", "management")
         self.assert_discarded("Solutions Architect", "architect")
         self.assert_discarded("AWS Cloud Architect", "architect")
         self.assert_discarded("Cloud Security Analyst", "security")
@@ -104,11 +104,13 @@ class AmbiguousTitlesTests(unittest.TestCase):
 
 
 class ConflictRulesTests(unittest.TestCase):
-    def test_hard_off_beats_target(self):
-        # "desenvolvedor" + "infraestrutura" -> vaga de dev, descarta.
+    def test_target_beats_hard_off(self):
+        # "desenvolvedor" + "infraestrutura" -> alvo vence, mantém (ex.: Software Engineer (SRE)).
         d = decision("Desenvolvedor de Infraestrutura e Automação Sênior")
-        self.assertFalse(d.keep)
-        self.assertEqual(d.reason, "off_profile_title:dev_software")
+        self.assertTrue(d.keep)
+        self.assertTrue(d.reason.startswith("kept_target:"), d.reason)
+        # O exemplo do usuário: "software" (dev) vs "sre" (alvo) -> libera.
+        self.assertTrue(decision("Software Engineer Spec III (SRE)").keep)
 
     def test_target_beats_soft_off(self):
         self.assertTrue(decision("SRE Tech Lead").keep)
@@ -120,6 +122,18 @@ class ConflictRulesTests(unittest.TestCase):
 
     def test_infra_with_automation_is_not_dev(self):
         self.assertTrue(decision("Analista de Infraestrutura e Automação Sênior").keep)
+
+    def test_off_profile_without_target_still_discards(self):
+        # Sem palavra-alvo, hard off-profile continua descartando.
+        d = decision("Senior Full Stack Engineer")
+        self.assertFalse(d.keep)
+        self.assertEqual(d.reason, "off_profile_title:dev_software")
+
+    def test_target_rescues_even_management_word(self):
+        # "cloud operations" é palavra-alvo -> resgata até "head de".
+        d = decision("HEAD DE HYBRID CLOUD OPERATIONS")
+        self.assertTrue(d.keep)
+        self.assertTrue(d.reason.startswith("kept_target:"), d.reason)
 
     def test_word_boundaries_avoid_false_positives(self):
         # "qa" não deve casar em "Qatar"; "ios" não em "kiosk".

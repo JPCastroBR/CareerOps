@@ -95,6 +95,7 @@ def get_schedule(config: dict) -> dict:
         "digest_at": digest_at,
         "times": times,
         "jobs": jobs,
+        "source_frequency": raw.get("source_frequency") or {},
     }
 
 

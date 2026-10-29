@@ -58,3 +58,27 @@ def dedupe_jobs(rows: list) -> list:
         seen_keys.add(key)
         result.append(row)
     return result
+
+
+def dedupe_jobs_dropped(rows: list) -> list:
+    """Return the rows that ``dedupe_jobs`` would drop (duplicates), in order.
+
+    Mirrors ``dedupe_jobs`` exactly (same URL / normalized-key rules) so the
+    pipeline can log *which* jobs were removed as batch duplicates.
+    """
+    seen_urls: set[str] = set()
+    seen_keys: set[str] = set()
+    dropped: list = []
+    for row in rows:
+        url = str(row.get("job_url") or "").strip()
+        if url and url in seen_urls:
+            dropped.append(row)
+            continue
+        key = job_dedup_key(row)
+        if key in seen_keys:
+            dropped.append(row)
+            continue
+        if url:
+            seen_urls.add(url)
+        seen_keys.add(key)
+    return dropped

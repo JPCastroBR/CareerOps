@@ -7,8 +7,8 @@ import pandas as pd
 import requests
 from careerops.collector.jobspy import fetch_recent_jobs
 from careerops.collector.banks import fetch_bank_jobs
-from careerops.collector.filters import is_brazil_onsite, modality_allowed, normalize_modes
-from careerops.collector.dedup import dedupe_jobs
+from careerops.collector.filters import is_brazil_onsite, modality_allowed, normalize_modes, _block_pattern
+from careerops.collector.dedup import dedupe_jobs, dedupe_jobs_dropped
 from careerops.collector.inhire import fetch_inhire_jobs
 from careerops.collector.prefilter import build_rules, apply_prefilter
 from careerops.collector.scoring import build_scorer
@@ -253,6 +253,11 @@ def parse_args():
         help="Coleta + filtra e mostra o resultado SEM enviar nada ao n8n "
              "(não grava memória, não dispara digest).",
     )
+    parser.add_argument(
+        "--sources",
+        help="Fontes separadas por vírgula para ESTA execução (ex: linkedin,indeed "
+             "ou gupy,workday,inhire). Sobrepõe config.json → scan_sources.",
+    )
     args = parser.parse_args()
 
     # Resolução de país isolado (--country)
@@ -286,6 +291,23 @@ def carregar_memoria():
 def salvar_na_memoria(url):
     with open(ARQUIVO_MEMORIA, "a", encoding="utf-8") as f:
         f.write(f"{url}\n")
+
+
+def _rescue_pattern(perfil) -> str:
+    """Word-boundary regex of the profile's target-role keywords.
+
+    A title matching these ("palavras que eu busco": SRE, DevOps, Cloud, Infra…)
+    is rescued from the title blocklist — target keywords have priority.
+    """
+    if not perfil:
+        return ""
+    matching = perfil.get("title_matching") or {}
+    kws: list[str] = []
+    for entry in matching.get("target", []) or []:
+        for k in entry.get("keywords", []) or []:
+            if str(k).strip():
+                kws.append(str(k).strip())
+    return _block_pattern(kws)
 
 
 def main():
@@ -373,6 +395,8 @@ def main():
         or (not args.country_resolved and not args.countries_resolved)
     )
     scan_sources = cfg.get("scan_sources")
+    if args.sources:
+        scan_sources = [s.strip().lower() for s in args.sources.split(",") if s.strip()]
     if args.source is not None:
         source = args.source
         if source in ("jobspy", "all"):
@@ -621,20 +645,37 @@ def main():
 
     # Aplica o filtro pesado apenas nos títulos
     total_antes_txt = len(df_final)
-    padrao_titulo = '|'.join(re.escape(p) for p in palavras_proibidas_titulo)
-    df_final = df_final[~df_final['title'].str.contains(padrao_titulo, case=False, na=False)]
+    padrao_titulo = _block_pattern(palavras_proibidas_titulo)
+    padrao_descricao = _block_pattern(palavras_proibidas_descricao)
+    padrao_resgate = _rescue_pattern(perfil)
 
-    # Aplica o filtro de vistos apenas nas descrições
-    padrao_descricao = '|'.join(re.escape(p) for p in palavras_proibidas_descricao)
-    df_final = df_final[~df_final['description'].str.contains(padrao_descricao, case=False, na=False)]
+    if not df_final.empty:
+        mask_titulo = df_final['title'].str.contains(padrao_titulo, case=False, na=False)
+        mask_descricao = df_final['description'].str.contains(padrao_descricao, case=False, na=False)
+        # Prioridade: título com palavra-alvo (SRE/DevOps/Cloud/Infra) sobrevive ao
+        # blocklist de título ("Software Engineer (SRE)" é liberado pelo SRE).
+        mask_resgate = (
+            df_final['title'].str.contains(padrao_resgate, case=False, na=False)
+            if padrao_resgate else pd.Series(False, index=df_final.index)
+        )
+        mask = (mask_titulo & ~mask_resgate) | mask_descricao
+        for _, r in df_final[mask].iterrows():
+            descricao = str(r.get('description') or '')
+            motivo = ("description_blocklist" if re.search(padrao_descricao, descricao, re.IGNORECASE)
+                      else "title_blocklist")
+            tel.discarded_job("title_or_description", motivo, r)
+        df_final = df_final[~mask]
     tel.filtered("title_or_description", total_antes_txt - len(df_final))
 
     # 2b. Blocklist de EMPRESAS (aggregators/spam que não são empregadores reais)
     if company_blocklist_cfg and not df_final.empty:
         palavras_proibidas_empresa = [p.lower() for p in company_blocklist_cfg]
-        padrao_empresa = '|'.join(re.escape(p) for p in palavras_proibidas_empresa)
+        padrao_empresa = _block_pattern(palavras_proibidas_empresa)
         total_antes_emp = len(df_final)
-        df_final = df_final[~df_final['company'].astype(str).str.lower().str.contains(padrao_empresa, na=False)]
+        mask_empresa = df_final['company'].astype(str).str.lower().str.contains(padrao_empresa, na=False)
+        for _, r in df_final[mask_empresa].iterrows():
+            tel.discarded_job("company_blocklist", "empresa bloqueada", r)
+        df_final = df_final[~mask_empresa]
         vagas_empresa = total_antes_emp - len(df_final)
         if vagas_empresa > 0:
             print(f"🚫 Descartadas {vagas_empresa} vagas de empresas bloqueadas (company_blocklist).")
@@ -643,13 +684,20 @@ def main():
     # 3. Anti-Duplicidade
     vagas_antigas = carregar_memoria()
     total_antes = len(df_final)
-    df_final = df_final[~df_final['job_url'].isin(vagas_antigas)]
+    if not df_final.empty:
+        mask_antigas = df_final['job_url'].isin(vagas_antigas)
+        for _, r in df_final[mask_antigas].iterrows():
+            tel.discarded_job("already_processed", "já processada (memória)", r)
+        df_final = df_final[~mask_antigas]
     vagas_repetidas = total_antes - len(df_final)
 
     # 3.1. Dedup do lote: mesma URL e/ou mesma vaga entre fontes
     #      (empresa + título + localização normalizados).
     registros = dedupe_jobs(df_final.to_dict('records'))
     vagas_duplicadas = len(df_final) - len(registros)
+    if vagas_duplicadas > 0:
+        for r in dedupe_jobs_dropped(df_final.to_dict('records')):
+            tel.discarded_job("dedupe_batch", "duplicata no lote", r)
     df_final = pd.DataFrame(registros)
 
     if vagas_repetidas > 0:
@@ -671,7 +719,10 @@ def main():
     # =========================================================================
     antes_br = len(df_final)
     if brazil_remote_only:
-        df_final = df_final[~df_final.apply(is_brazil_onsite, axis=1)]
+        mask_br = df_final.apply(is_brazil_onsite, axis=1)
+        for _, r in df_final[mask_br].iterrows():
+            tel.discarded_job("brazil_onsite", "presencial no Brasil", r)
+        df_final = df_final[~mask_br]
     descartadas_br = antes_br - len(df_final)
     if descartadas_br > 0:
         print(f"🇧🇷 Descartadas {descartadas_br} vaga(s) presenciais do Brasil "
@@ -682,7 +733,10 @@ def main():
         _modes = normalize_modes(work_modes)
         if _modes and len(_modes) < 3:
             antes_mod = len(df_final)
-            df_final = df_final[df_final.apply(lambda r: modality_allowed(r, _modes), axis=1)]
+            mask_mod = df_final.apply(lambda r: modality_allowed(r, _modes), axis=1)
+            for _, r in df_final[~mask_mod].iterrows():
+                tel.discarded_job("work_modes", "modalidade não habilitada", r)
+            df_final = df_final[mask_mod]
             disc_mod = antes_mod - len(df_final)
             if disc_mod > 0:
                 print(f"🧭 Descartadas {disc_mod} vaga(s) por modalidade "
@@ -707,6 +761,8 @@ def main():
               f"descartadas={pre_stats['discarded']} | ambíguas={pre_stats['ambiguous']}")
         for reason, count in sorted(pre_stats["by_reason"].items()):
             print(f"   - {reason}: {count}")
+        for detail in pre_stats.get("dropped_details", []):
+            tel.discarded_job("prefilter_title", detail.get("reason", "fora do perfil"), detail)
         tel.filtered("prefilter_title", pre_stats["discarded"], ambiguous=pre_stats["ambiguous"])
     else:
         print("\n🎯 Pré-filtro por título: ignorado (profile.yaml indisponível).")

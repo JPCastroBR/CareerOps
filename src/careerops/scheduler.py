@@ -67,7 +67,35 @@ def _prune(state: dict, keep_days: int = 7) -> dict:
     cutoff = (datetime.now() - timedelta(days=keep_days)).strftime("%Y-%m-%d")
     runs = {k: v for k, v in (state.get("runs") or {}).items() if k[:10] >= cutoff}
     state["runs"] = runs
+    daily = {k: v for k, v in (state.get("daily") or {}).items() if k >= cutoff}
+    state["daily"] = daily
     return state
+
+
+def source_plan(config: dict) -> dict:
+    """Return ``{"every": [...], "daily": [...], "configured": bool}``.
+
+    ``configured`` is False when ``schedule.source_frequency`` is absent, so the
+    scheduler keeps the legacy behavior (no ``--sources`` → main.py uses
+    ``config.scan_sources``). With a frequency map, ``every`` sources run at
+    every slot and ``daily`` sources run once per day (first slot that fires).
+    """
+    scan = [s for s in (config.get("scan_sources") or [])]
+    if not scan:
+        scan = ["linkedin", "indeed", "gupy", "workday", "inhire"]
+    freq = ((config.get("schedule") or {}).get("source_frequency") or {})
+    if not freq:
+        return {"every": scan, "daily": [], "configured": False}
+    every = [s for s in scan if str(freq.get(s, "every")).strip().lower() != "daily"]
+    daily = [s for s in scan if str(freq.get(s, "")).strip().lower() == "daily"]
+    return {"every": every, "daily": daily, "configured": True}
+
+
+def pending_sources(plan: dict, daily_done: set[str]) -> list[str]:
+    """Sources to run this slot: every + daily sources not yet run today."""
+    if not plan.get("configured"):
+        return []
+    return plan["every"] + [s for s in plan["daily"] if s not in daily_done]
 
 
 def due_slots(schedule: dict, now: datetime | None = None, state: dict | None = None) -> list[dict]:
@@ -102,10 +130,13 @@ def _log(line: str) -> None:
         pass
 
 
-def run_scan(digest: bool) -> int:
+def run_scan(digest: bool, sources: list[str] | None = None) -> int:
     cmd = [sys.executable, "-m", "careerops.main"]
     if digest:
         cmd.append("--digest")
+    if sources:
+        cmd.append("--sources")
+        cmd.append(",".join(sources))
     env = dict(os.environ)
     env.setdefault("PYTHONPATH", str(BASE_DIR / "src"))
     _log(f"▶ executando: {' '.join(cmd)}")
@@ -121,15 +152,20 @@ def run_scan(digest: bool) -> int:
 def main() -> int:
     _log(f"scheduler iniciado (config={CONFIG_PATH}, poll={POLL_SECONDS}s)")
     last_mtime = None
-    schedule = get_schedule(load_config(CONFIG_PATH))
+    config = load_config(CONFIG_PATH)
+    schedule = get_schedule(config)
+    plan = source_plan(config)
     while True:
         try:
             mtime = CONFIG_PATH.stat().st_mtime if CONFIG_PATH.exists() else None
             if mtime != last_mtime:
-                schedule = get_schedule(load_config(CONFIG_PATH))
+                config = load_config(CONFIG_PATH)
+                schedule = get_schedule(config)
+                plan = source_plan(config)
                 last_mtime = mtime
                 _log(f"agenda carregada: enabled={schedule['enabled']} "
-                     f"times={schedule['times']} digest_at={schedule['digest_at']}")
+                     f"times={schedule['times']} digest_at={schedule['digest_at']} "
+                     f"fontes={plan['every']} (diárias={plan['daily']})")
 
             if not schedule.get("enabled", True):
                 time.sleep(POLL_SECONDS)
@@ -137,14 +173,34 @@ def main() -> int:
 
             state = _prune(_load_state())
             for item in due_slots(schedule, state=state):
+                sources = None
+                today = datetime.now().strftime("%Y-%m-%d")
+                if plan.get("configured"):
+                    daily_done = set((state.get("daily") or {}).get(today, []))
+                    pending = pending_sources(plan, daily_done)
+                    if not pending:
+                        _log(f"⏭ slot {item['key']} sem fontes pendentes — pulado")
+                        state.setdefault("runs", {})[item["key"]] = {
+                            "status": "skipped",
+                            "digest": item["digest"],
+                            "sources": [],
+                        }
+                        continue
+                    sources = pending
                 state.setdefault("runs", {})[item["key"]] = {
                     "status": "running",
                     "started_at": datetime.now().isoformat(timespec="seconds"),
                     "digest": item["digest"],
+                    "sources": sources,
                 }
                 _save_state(state)
-                _log(f"⏰ slot {item['key']} (digest={item['digest']})")
-                rc = run_scan(item["digest"])
+                _log(f"⏰ slot {item['key']} (digest={item['digest']}, fontes={sources})")
+                rc = run_scan(item["digest"], sources)
+                if plan.get("configured") and rc == 0:
+                    d = state.setdefault("daily", {}).setdefault(today, [])
+                    for s in plan["daily"]:
+                        if s not in d:
+                            d.append(s)
                 state["runs"][item["key"]].update({
                     "status": "ok" if rc == 0 else "error",
                     "exit": rc,

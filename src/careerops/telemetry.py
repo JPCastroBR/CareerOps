@@ -27,8 +27,10 @@ EVENTS_FILE = TELEMETRY_DIR / "events.jsonl"
 JOBS_CSV = TELEMETRY_DIR / "jobs_analyzed.csv"
 SEEN_FILE = TELEMETRY_DIR / "seen.jsonl"
 SENT_FILE = TELEMETRY_DIR / "sent_jobs.jsonl"
+DISCARDED_FILE = TELEMETRY_DIR / "discarded.jsonl"
 
 MAX_EVENTS_BYTES = 3_000_000
+MAX_DISCARDED_BYTES = 2_000_000
 MAX_RECENT_SEEN = 150
 MAX_RECENT_EVENTS = 300
 
@@ -252,6 +254,34 @@ def filtered(stage: str, discarded: int, **extra) -> None:
         _write_state()
 
 
+def discarded_job(stage: str, reason: str, row, source: str = "") -> None:
+    """Log one discarded job (with identity + reason) for the Coleta view.
+
+    Appended to ``discarded.jsonl`` (capped), separate from the event stream so
+    the pipeline can explain *which* jobs were dropped and why.
+    """
+    record = {
+        "ts": now_iso(),
+        "run_id": _run_id,
+        "stage": stage,
+        "reason": reason,
+        "company": _g(row, "company"),
+        "title": _g(row, "title"),
+        "location": _g(row, "location"),
+        "url": _g(row, "job_url") or _g(row, "url"),
+        "source": _g(row, "source") or source,
+    }
+    _ensure_dir()
+    try:
+        with DISCARDED_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        if DISCARDED_FILE.stat().st_size > MAX_DISCARDED_BYTES:
+            lines = DISCARDED_FILE.read_text(encoding="utf-8").splitlines()
+            DISCARDED_FILE.write_text("\n".join(lines[-4000:]) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def finish(status: str = "finished", **fields) -> None:
     with _lock:
         if _state.get("status") != "running":
@@ -395,6 +425,39 @@ def read_seen(days: int | None = None, limit: int | None = None) -> list[dict]:
     if limit:
         rows = rows[: int(limit)]
     return rows
+
+
+def read_discarded(limit: int = 200, days: int | None = None) -> list[dict]:
+    if not DISCARDED_FILE.exists():
+        return []
+    try:
+        lines = DISCARDED_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    cutoff = None
+    if days and int(days) > 0:
+        cutoff = datetime.now().astimezone() - timedelta(days=int(days))
+    out: list[dict] = []
+    for line in lines:
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if cutoff:
+            ts = _parse_iso(rec.get("ts"))
+            if ts is None or ts < cutoff:
+                continue
+        out.append(rec)
+    return out[-limit:][::-1]
+
+
+def clear_events() -> None:
+    for f in (EVENTS_FILE, DISCARDED_FILE):
+        try:
+            if f.exists():
+                f.unlink()
+        except OSError:
+            pass
 
 
 def read_job_urls() -> set[str]:

@@ -28,6 +28,15 @@ UA = (
 # workplaceType values returned by InHire -> remote?
 _REMOTE_TYPES = {"remote", "remoto", "home office", "home-office", "homeoffice"}
 
+# workplaceType -> canonical modality (remote | hybrid | onsite | "")
+_MODALITY_ALIASES = {
+    "remote": "remote", "remoto": "remote", "remota": "remote",
+    "home office": "remote", "home-office": "remote", "homeoffice": "remote",
+    "hybrid": "hybrid", "híbrido": "hybrid", "hibrido": "hybrid",
+    "onsite": "onsite", "on-site": "onsite", "on site": "onsite",
+    "presencial": "onsite", "in-person": "onsite", "in person": "onsite",
+}
+
 # Default title pre-filter (applied before fetching details). Empty = fetch all.
 DEFAULT_INCLUDE = [
     "sre", "site reliability", "reliability", "devops", "devsecops",
@@ -68,6 +77,12 @@ def is_remote(workplace_type) -> bool:
     return str(workplace_type or "").strip().lower() in _REMOTE_TYPES
 
 
+def classify_workplace(workplace_type) -> str:
+    """Map InHire ``workplaceType`` to ``remote|hybrid|onsite|""``."""
+    key = str(workplace_type or "").strip().lower()
+    return _MODALITY_ALIASES.get(key, "")
+
+
 def _include_title(title: str, include: list[str]) -> bool:
     if not include:
         return True
@@ -99,6 +114,7 @@ def build_row(company: str, slug: str, listing: dict, detail: dict) -> dict:
     title = detail.get("displayName") or listing.get("title") or ""
     workplace = detail.get("workplaceType") or listing.get("workplace_type") or ""
     remote = is_remote(workplace)
+    modality = classify_workplace(workplace)
     location = detail.get("location") or listing.get("location") or ""
     complement = str(detail.get("locationComplement") or "").strip()
     if complement:
@@ -121,6 +137,7 @@ def build_row(company: str, slug: str, listing: dict, detail: dict) -> dict:
         "job_level": "",
         "is_remote": remote,
         "remote": "remote" if remote else "not_remote",
+        "modality": modality,
         "date_posted": detail.get("publishedAt") or "",
         "date_valid_through": "",
         "source": f"inhire:{slug}",
@@ -177,7 +194,7 @@ def fetch_inhire_jobs(
 
     columns = [
         "title", "company", "location", "job_url", "description",
-        "job_type", "job_level", "is_remote", "remote", "date_posted",
+        "job_type", "job_level", "is_remote", "remote", "modality", "date_posted",
         "date_valid_through", "source",
     ]
     rows: list[dict] = []
