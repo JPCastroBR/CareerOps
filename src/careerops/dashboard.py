@@ -475,6 +475,7 @@ details.block > .body { padding: 0 16px 16px; }
 .market-note code { font-family: var(--mono); font-size: 11px; color: var(--accent-2); }
 .mini-bar { height: 8px; background: rgba(255, 255, 255, .06); border-radius: 999px; overflow: hidden; min-width: 120px; }
 .mini-bar i { display: block; height: 100%; border-radius: 999px; }
+.chip.tf { background: rgba(45, 212, 191, .14); color: #6ee7db; }
   </style>
 </head>
 <body>
@@ -706,23 +707,25 @@ details.block > .body { padding: 0 16px 16px; }
         </div>
         <div class="market-note">
           <b>De onde vem isto?</b> Cada vaga na planilha tem o campo <b>SKILLS_DA_VAGA</b>, preenchido pela IA — o que a vaga pede, classificado em
-          <span class="chip yes">domina</span> (evidência forte no perfil) · <span class="chip tag">parcial</span> (conhecimento/estudo) · <span class="chip no">faltando</span> (sem evidência).
-          Aqui agregamos isso e cruzamos com o <b>profile.yaml</b> (com apelidos via <code>skill_aliases</code>). <b>"Skills a melhorar"</b> = pedidas em muitas vagas mas com pouca/nenhuma evidência sua — priorize por frequência.
+          <span class="chip yes">domina</span> (evidência forte no perfil) · <span class="chip tag">parcial</span> (conhecimento/estudo) · <span class="chip no">faltando</span> (sem evidência) e <span class="chip tf">transferível</span> (outra skill do mesmo grupo você já domina — ex.: AWS forte transfere conceitos para GCP/Azure/OCI).
+          Cruzamos com o <b>profile.yaml</b> (apelidos via <code>skill_aliases</code>). <b>"Skills a melhorar"</b> = pedidas em muitas vagas mas com pouca/nenhuma evidência sua — priorize por frequência.
         </div>
         <div class="cards" id="gap-cards"></div>
-        <div class="card">
-          <div class="card-title">Mais pedidas pelo mercado</div>
-          <div class="table-wrap"><table>
-            <thead><tr><th>Skill</th><th>Pedida em</th><th>% das vagas</th><th>Demanda</th><th>Situação</th></tr></thead>
-            <tbody id="gap-demand"></tbody>
-          </table></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Gaps prioritários (o que melhorar)</div>
-          <div class="table-wrap"><table>
-            <thead><tr><th>Skill</th><th>Pedida em</th><th>Sem evidência</th><th>Prioridade</th></tr></thead>
-            <tbody id="gap-missing"></tbody>
-          </table></div>
+        <div class="dash-grid">
+          <div class="card span-6">
+            <div class="card-title">Mais pedidas pelo mercado</div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Skill</th><th>Pedida em</th><th>% das vagas</th><th>Demanda</th><th>Situação</th></tr></thead>
+              <tbody id="gap-demand"></tbody>
+            </table></div>
+          </div>
+          <div class="card span-6">
+            <div class="card-title">Gaps prioritários (o que melhorar)</div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Skill</th><th>Pedida em</th><th>Sem evidência</th><th>Prioridade</th></tr></thead>
+              <tbody id="gap-missing"></tbody>
+            </table></div>
+          </div>
         </div>
         <div class="card">
           <div class="card-title">Priorização (IA)</div>
@@ -1321,7 +1324,7 @@ details.block > .body { padding: 0 16px 16px; }
       const days = $("gap-days").value || "0";
       const d = await j(`/api/gaps?days=${days}`);
       if (!d || !d.ok) { $("gap-msg").textContent = "erro: " + (d && d.error ? d.error : "?"); return; }
-      $("gap-msg").innerHTML = `${d.total_jobs} vagas · ${d.distinct_skills} skills pedidas · <span class="chip yes">domina</span> <span class="chip tag">parcial</span> <span class="chip no">faltando</span> · cobertura <b>${d.coverage_pct}%</b>`;
+      $("gap-msg").innerHTML = `${d.total_jobs} vagas · ${d.distinct_skills} skills pedidas · <span class="chip yes">domina</span> <span class="chip tag">parcial</span> <span class="chip tf">transferível</span> <span class="chip no">faltando</span> · cobertura <b>${d.coverage_pct}%</b>`;
       $("gap-cards").innerHTML = [
         ["Vagas na planilha", d.total_jobs],
         ["Skills pedidas", d.distinct_skills],
@@ -1330,7 +1333,8 @@ details.block > .body { padding: 0 16px 16px; }
       ].map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
       $("gap-demand").innerHTML = (d.demand || []).map((s) => {
         const pct = d.total_jobs ? Math.round(s.count / d.total_jobs * 100) : 0;
-        const chip = s.status === "strong" ? '<span class="chip yes">domina</span>' : s.status === "weak" ? '<span class="chip tag">parcial</span>' : '<span class="chip no">faltando</span>';
+        const chips = { strong: '<span class="chip yes">domina</span>', weak: '<span class="chip tag">parcial</span>', transferable: '<span class="chip tf">transferível</span>', missing: '<span class="chip no">faltando</span>' };
+        const chip = chips[s.status] || chips.missing;
         return `<tr><td><b>${esc(s.label || s.name)}</b></td><td class="mono">${s.count}</td><td class="mono">${pct}%</td><td><div class="mini-bar"><i style="width:${Math.min(100, pct)}%;background:linear-gradient(90deg,var(--accent),var(--violet))"></i></div></td><td>${chip}</td></tr>`;
       }).join("") || `<tr><td colspan="5" class="empty">sem skills registradas ainda</td></tr>`;
       $("gap-missing").innerHTML = (d.gaps || []).map((s) => {
@@ -1523,7 +1527,8 @@ const CONFIG_SECTIONS = [
       { n: 3, title: "Formação, Idiomas e Certificações", desc: "Educação, idiomas e certificações.", type: "education" },
       { n: 4, title: "Experiência", desc: "Empregos, atividades e tecnologias.", type: "experience", key: "experience" },
       { n: 5, title: "Competências", desc: "Grupos por você. Cada skill tem grupo e nível; informe as empresas onde usou.", type: "skills" },
-      { n: 6, title: "Preferências de vaga", desc: "O que aceitar e evitar.", fields: [
+      { n: 6, title: "Apelidos de skills", desc: "Nomes alternativos que as vagas usam para a mesma skill (ex.: kubernetes → k8s, eks, gke). Usados no Mercado & Gaps.", type: "aliases" },
+      { n: 7, title: "Preferências de vaga", desc: "O que aceitar e evitar.", fields: [
         { key: "desired_job_types", label: "Tipos desejados", type: "lines", rows: 6, help: "Ex.: SRE, Cloud Engineering" },
         { key: "undesired_job_types", label: "Tipos indesejados", type: "lines", rows: 8, help: "Ex.: Full Stack, Front-end" },
         { key: "restrictions", label: "Restrições", type: "lines", rows: 5, help: "Ex.: presencial fora do escopo; visto." },
@@ -1531,7 +1536,7 @@ const CONFIG_SECTIONS = [
     ];
     const PROFILE_CURATED = new Set(["identity", "location", "professional_objective", "target_roles", "seniority",
       "education", "languages", "certifications", "experience", "skill_groups", "skills",
-      "desired_job_types", "undesired_job_types", "restrictions", "work_preferences"]);
+      "desired_job_types", "undesired_job_types", "restrictions", "work_preferences", "skill_aliases"]);
     const get = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
     function set(o, p, v) {
       const parts = p.split("."); let cur = o;
@@ -2417,11 +2422,32 @@ function renderSources(container) {
   renderOthers();
 }
 
+function renderAliases(box) {
+  box.innerHTML = "";
+  if (!docWorking.skill_aliases || typeof docWorking.skill_aliases !== "object" || Array.isArray(docWorking.skill_aliases)) docWorking.skill_aliases = {};
+  const aliases = docWorking.skill_aliases;
+  function draw() {
+    box.innerHTML = "";
+    Object.keys(aliases).sort((a, b) => a.localeCompare(b)).forEach((k) => {
+      const row = document.createElement("div"); row.className = "skill-row";
+      const nameIn = textInput(k, (v) => { const vals = aliases[k]; delete aliases[k]; const nv = (v || "").trim(); aliases[nv] = vals; schedulePreview(); }, "Skill (ex.: kubernetes)");
+      nameIn.style.flex = "0 0 200px";
+      const aliIn = textInput((aliases[k] || []).join(", "), (v) => { aliases[k] = v.split(",").map((s) => s.trim()).filter(Boolean); schedulePreview(); }, "apelidos separados por vírgula (ex.: k8s, eks, gke)");
+      aliIn.style.flex = "1 1 auto";
+      const rm = addButton("✕", () => { delete aliases[k]; draw(); schedulePreview(); });
+      row.append(nameIn, aliIn, rm);
+      box.appendChild(row);
+    });
+    box.appendChild(addButton("+ Adicionar apelido", () => { aliases[""] = []; draw(); schedulePreview(); }));
+  }
+  draw();
+}
+
 function renderSections(container, sections, curated) {
       container.innerHTML = "";
       for (const section of sections) {
         const sec = document.createElement("div"); sec.className = "section";
-        if (["experience", "skills", "education", "targets", "sources"].includes(section.type) || guidedFile === "profile.yaml") sec.classList.add("wide");
+        if (["experience", "skills", "education", "targets", "sources", "aliases"].includes(section.type) || guidedFile === "profile.yaml") sec.classList.add("wide");
         const head = document.createElement("div"); head.className = "section-head";
         head.appendChild(Object.assign(document.createElement("span"), { className: "section-num", textContent: section.n }));
         head.appendChild(Object.assign(document.createElement("h3"), { textContent: section.title }));
@@ -2437,6 +2463,8 @@ function renderSections(container, sections, curated) {
           const box = document.createElement("div"); sec.appendChild(box); renderTargets(box);
         } else if (section.type === "sources") {
           const box = document.createElement("div"); sec.appendChild(box); renderSources(box);
+        } else if (section.type === "aliases") {
+          const box = document.createElement("div"); sec.appendChild(box); renderAliases(box);
         } else {
           for (const field of section.fields) {
             sec.appendChild(fieldRow(field, (v) => { set(docWorking, field.key, v); schedulePreview(); }));
@@ -2903,12 +2931,36 @@ def _gaps_data(days: int) -> dict:
 
     strong = {"hands_on", "working_knowledge"}
     weak = {"learning", "conceptual", "none"}
+
+    # Famílias transferíveis: dominar 1 item do grupo transfere os conceitos pros demais.
+    FAMILIES = {
+        "cloud": {"aws", "azure", "gcp", "oci", "cloud_architecture"},
+        "observability": {"monitoring", "observability_practices", "new_relic", "elastic_apm"},
+        "ci_cd": {"ci_cd", "gitops"},
+        "iac": {"infrastructure_as_code", "ansible"},
+        "containers": {"docker", "kubernetes"},
+    }
+    name_to_family: dict = {}
+    for fam, names in FAMILIES.items():
+        for n in names:
+            name_to_family[n] = fam
+    strong_families = set()
+    for nm, ps in profile_skills.items():
+        if ps["level"] in strong:
+            f = name_to_family.get(nm)
+            if f:
+                strong_families.add(f)
+
     items = []
     for name, c in demand.items():
         ps = profile_skills.get(name)
         lv = ps["level"] if ps else None
+        f = name_to_family.get(name)
         if lv in strong:
             status = "strong"
+        elif f and f in strong_families and f == "cloud":
+            # conceitos de nuvem transferem entre provedores (AWS/OCI fortes -> GCP/Azure transferíveis)
+            status = "transferable"
         elif lv in weak:
             status = "weak"
         else:
@@ -2932,7 +2984,7 @@ def _gaps_data(days: int) -> dict:
         "distinct_skills": len(items),
         "coverage_pct": round(100 * strong_count / len(items)) if items else 0,
         "demand": items[:15],
-        "gaps": sorted([i for i in items if i["status"] != "strong"], key=lambda x: -x["ausentes"])[:15],
+        "gaps": sorted([i for i in items if i["status"] not in ("strong", "transferable")], key=lambda x: -x["ausentes"])[:15],
     }
 
 
