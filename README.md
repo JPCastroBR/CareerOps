@@ -148,6 +148,8 @@ O n8n lê dois Google Docs (PT + EN). Configure os IDs no workflow `careerops-cu
     { "country": "Brazil", "work_mode": "any" }
   ],
   "work_modes": ["remote", "hybrid"],
+  "prompt": "Você é um Tech Recruiter Sênior… (system prompt da IA)",
+  "max_description_chars": 4000,
   "title_blocklist": ["junior", "intern", "manager", "qa", "suporte", "sales"],
   "company_blocklist": ["jobgether", "quik hire staffing", "lensa"],
   "banks": [
@@ -382,6 +384,8 @@ Tudo que muda de pessoa para pessoa está no `config.json` (o `profile.yaml` cob
 | `other_sources` | reservado — não é lido pelo código |
 | `schedule` | horários (scheduler no container) |
 | `profile.yaml` | currículo, skills por nível, cargos-alvo |
+| `prompt` | system prompt da IA — editável no dashboard (seção **IA**) e enviado no payload |
+| `max_description_chars` | corte da descrição antes da IA (economia de tokens) |
 
 ---
 
@@ -437,16 +441,17 @@ Dashboard web leve (stdlib, sem deps extras) ao lado do n8n:
 
 - **URL**: http://localhost:8080 — n8n continua em http://localhost:5678
 - **Início**: página descritiva do projeto (por que existe + como funciona) com atalhos para dashboard, n8n e GitHub.
-- **Mercado & Gaps**: compara o que as vagas pedem (SKILLS_DA_VAGA) com o seu `profile.yaml` — o que o mercado mais exige e o que priorizar para estudar.
-- **Navegação no topo em 3 áreas**: logo · **Visão geral / Vagas / Analisadas** · menu **Configurações** (Geral, Perfil, Agendamento, **Workflows**, **Segredos**)
+- **Mercado & Gaps**: compara o que as vagas pedem (`SKILLS_DA_VAGA`, normalizado via `skill_aliases`) com o seu `profile.yaml` — tabelas de **mais pedidas** (com situação domina/parcial/transferível/faltando) e **gaps prioritários**; botão **Priorização (IA)** envia a análise ao n8n (`careerops-gaps`) e devolve o que estudar. Nuvem é família transferível (AWS/OCI fortes → GCP/Azure/OCI não viram gap).
+- **Navegação no topo**: logo · **Início / Visão geral / Vagas / Analisadas / Mercado** · link pro **n8n** · menu **Configurações** (Geral, Perfil, Agendamento, Workflows, Segredos)
 - **Identidade visual**: redesign dark navy profissional, sistema de tokens, cards elevados, KPIs com ícones SVG, tipografia Inter e tabelas consistentes — sem libs novas (stdlib + vanilla JS/CSS).
 - **Status de execução**: chip no header e painel **Status operacional** na Visão geral (status, execução, fonte, atualizado, início, erro); sem popup flutuante.
 - **Visão geral**: 6 KPIs com percentuais reais, funil (pegas, compatíveis, rejeitadas, entrevistas), donut, faixas de score 70–80/80–90/90–100, plataformas, evolução temporal e vagas vistas com link, colunas **Enviada (n8n)**, **Enviado em**, **Analisada (IA)** e botão **Reenviar**.
-- **Vagas/Analisadas**: títulos são links diretos para a vaga (mesmo comportamento da Visão geral), com **paginação** (25/página); tabelas responsivas escondem colunas menos críticas no mobile.
+- **Vagas/Analisadas**: títulos são links diretos para a vaga, com **paginação** (25/página) e botão **Reenviar** nas Analisadas; tabelas responsivas escondem colunas menos críticas no mobile.
+- **Vaga manual por URL**: botão na aba Vagas abre um modal — cola o link de uma vaga, o dashboard extrai título/descrição e envia ao n8n (segue o fluxo normal até a planilha).
 - **Rodapé**: assinatura **CareerOps · projeto de CareerOps** com link para o repositório oficial.
 - **Analisadas**: tabela + CSV `data/telemetry/jobs_analyzed.csv` (data, empresa, título, local, fonte, score) com download.
 - **Configuração**: seções numeradas — **1. Busca**, **2. Países e modalidades**, **3. Fontes**, **4. Filtros** — com **fontes por plataforma** (LinkedIn, Indeed, Gupy, Workday, InHire, Outros), **detecção por domínio** (inclui outras plataformas) e grupos por plataforma com **habilitar/desabilitar**, domínio, filtro e edição
-- **Perfil**: **1. Objetivo**, **2. Experiência** (cards com atividades e **tecnologias**, add/remover), **3. Competências** (grupos **hard/soft** definidos por você; skill com **grupo + nível** obrigatórios, evidências/limitações/observação opcionais, sem `source`, ordem alfabética), **4. Preferências de vaga** + **Outros campos** e prévia YAML; lista InHire editável em Configuração
+- **Perfil**: **1. Objetivo**, **2. Experiência**, **3. Formação/Idiomas/Certificações**, **4. Experiência**, **5. Competências** (grupos hard/soft, skill com grupo+nível), **6. Apelidos de skills** (`skill_aliases`: ex. `kubernetes → k8s, eks, gke`), **7. Preferências de vaga** + Outros campos e prévia YAML
 - **Planilha (Google Sheets)**: lê `Jobsearch-spy` (`Jobs`, `Rejected-Jobs`) via service account — cards, distribuição de score, **filtro por período (hoje/3/7/30 dias)**, busca, badges e colunas **Skills** e **OBS (IA)** (Salário removido: dado pessoal)
 - **Agenda**: edita horários (`times` + `digest_at`) e mostra **próximos disparos**; o container `scheduler` executa sozinho (sem cron)
 
@@ -499,6 +504,7 @@ Os fluxos do n8n ficam em **`n8n/workflows/*.json`** (um arquivo por workflow). 
 - **Credenciais não são exportadas** (só IDs/nomes). Em outra máquina, recrie no n8n (ou use `export:credentials`).
 - **Tokens do Telegram não ficam nos JSONs**: os nós usam `{{ $env.TELEGRAM_BOT_TOKEN }}` / `{{ $env.TELEGRAM_CURRICULO_BOT_TOKEN }}`. **Preencha essas variáveis no `.env` antes de importar** (o compose injeta no n8n). Se um token já apareceu em workflow/commit, **rotacione no BotFather**.
 - Os JSONs contêm IDs de planilha/doc, prompts e IDs de credenciais — cuidado ao publicar em repo público.
+- **Workflows**: `careerops-n8n` (vagas → IA → Sheets), `careerops-digest` (resumo diário), `careerops-curriculo` (currículo ATS) e `careerops-gaps` (análise de competências — recebe `{prompt}` e devolve a priorização via OpenAI gpt-4o-mini).
 
 ## 📊 Outputs: Onde as Vagas Vão
 
@@ -545,7 +551,7 @@ CareerOps/
 │   ├── n8n_sync.sh           # export/import dos workflows n8n
 │   └── run_digest.sh         # Disparo manual digest
 ├── n8n/
-│   ├── workflows/*.json      # Workflows versionados (careerops-n8n/-digest/-curriculo)
+│   ├── workflows/*.json      # Workflows versionados (careerops-n8n/-digest/-curriculo/-gaps)
 │   └── sync_loop.sh          # Loop do n8n-sync (auto-import banco vazio)
 ├── secrets/               # NÃO VERSIONAR (SA Google, Sheets, chaves)
 ├── data/
