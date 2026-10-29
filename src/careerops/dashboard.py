@@ -473,6 +473,8 @@ details.block > .body { padding: 0 16px 16px; }
 .market-note { background: rgba(8, 12, 22, .4); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 12.5px; color: var(--muted); line-height: 1.65; margin-bottom: 16px; }
 .market-note b { color: var(--fg); }
 .market-note code { font-family: var(--mono); font-size: 11px; color: var(--accent-2); }
+.mini-bar { height: 8px; background: rgba(255, 255, 255, .06); border-radius: 999px; overflow: hidden; min-width: 120px; }
+.mini-bar i { display: block; height: 100%; border-radius: 999px; }
   </style>
 </head>
 <body>
@@ -708,15 +710,25 @@ details.block > .body { padding: 0 16px 16px; }
           Aqui agregamos isso e cruzamos com o <b>profile.yaml</b> (com apelidos via <code>skill_aliases</code>). <b>"Skills a melhorar"</b> = pedidas em muitas vagas mas com pouca/nenhuma evidência sua — priorize por frequência.
         </div>
         <div class="cards" id="gap-cards"></div>
-        <div class="dash-grid">
-          <div class="card span-6"><div class="card-title">Mais pedidas pelo mercado</div><div id="gap-demand" class="chart-h"></div></div>
-          <div class="card span-6"><div class="card-title">Gaps prioritários (o que melhorar)</div><div id="gap-missing" class="chart-h"></div></div>
-          <div class="card span-12">
-            <div class="card-title">Priorização (IA)</div>
-            <p class="msg" style="margin:0 0 10px">Envia esta análise para a IA e recebe o que priorizar para estudar, com justificativa e números.</p>
-            <button class="ghost" onclick="analyzeGaps()">Pedir análise</button>
-            <div id="gap-ai-out" style="white-space:pre-wrap;font-size:13px;color:var(--fg);margin-top:12px;line-height:1.6"></div>
-          </div>
+        <div class="card">
+          <div class="card-title">Mais pedidas pelo mercado</div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Skill</th><th>Pedida em</th><th>% das vagas</th><th>Demanda</th><th>Situação</th></tr></thead>
+            <tbody id="gap-demand"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Gaps prioritários (o que melhorar)</div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Skill</th><th>Pedida em</th><th>Sem evidência</th><th>Prioridade</th></tr></thead>
+            <tbody id="gap-missing"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Priorização (IA)</div>
+          <p class="msg" style="margin:0 0 10px">Envia esta análise para a IA (via n8n) e recebe o que priorizar para estudar.</p>
+          <button class="ghost" onclick="analyzeGaps()">Pedir análise</button>
+          <div id="gap-ai-out" style="white-space:pre-wrap;font-size:13px;color:var(--fg);margin-top:12px;line-height:1.6"></div>
         </div>
         <p class="msg" id="gap-msg"></p>
       </section>
@@ -1316,16 +1328,15 @@ details.block > .body { padding: 0 16px 16px; }
         ["Cobertura forte", d.coverage_pct + "%"],
         ["Skills a melhorar", d.gaps.length],
       ].map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
-      const colors = { strong: "linear-gradient(90deg,var(--ok),var(--cyan))", weak: "linear-gradient(90deg,var(--warn),var(--ok))", missing: "linear-gradient(90deg,var(--err),var(--warn))" };
-      const label = { strong: "domina", weak: "parcial", missing: "faltando" };
       $("gap-demand").innerHTML = (d.demand || []).map((s) => {
         const pct = d.total_jobs ? Math.round(s.count / d.total_jobs * 100) : 0;
-        return `<div class="hbar"><div title="${esc(label[s.status])}">${esc(s.label || s.name)}</div><div class="track"><i style="width:${Math.min(100, pct)}%;background:${colors[s.status] || colors.missing}"></i></div><div class="val">${s.count}<small> ${pct}%</small></div></div>`;
-      }).join("") || `<div class="empty">sem skills registradas ainda</div>`;
+        const chip = s.status === "strong" ? '<span class="chip yes">domina</span>' : s.status === "weak" ? '<span class="chip tag">parcial</span>' : '<span class="chip no">faltando</span>';
+        return `<tr><td><b>${esc(s.label || s.name)}</b></td><td class="mono">${s.count}</td><td class="mono">${pct}%</td><td><div class="mini-bar"><i style="width:${Math.min(100, pct)}%;background:linear-gradient(90deg,var(--accent),var(--violet))"></i></div></td><td>${chip}</td></tr>`;
+      }).join("") || `<tr><td colspan="5" class="empty">sem skills registradas ainda</td></tr>`;
       $("gap-missing").innerHTML = (d.gaps || []).map((s) => {
         const pct = d.total_jobs ? Math.round(s.count / d.total_jobs * 100) : 0;
-        return `<div class="hbar"><div><b>${esc(s.label || s.name)}</b><span class="chip no" style="margin-left:6px">sem evidência ${s.ausentes}×</span></div><div class="track"><i style="width:${Math.min(100, pct)}%;background:linear-gradient(90deg,var(--err),var(--warn))"></i></div><div class="val">${s.count}<small> pedidas</small></div></div>`;
-      }).join("") || `<div class="empty">perfil cobre tudo 👏</div>`;
+        return `<tr><td><b>${esc(s.label || s.name)}</b></td><td class="mono">${s.count}</td><td class="mono">${s.ausentes}×</td><td><div class="mini-bar"><i style="width:${Math.min(100, pct)}%;background:linear-gradient(90deg,var(--err),var(--warn))"></i></div></td></tr>`;
+      }).join("") || `<tr><td colspan="4" class="empty">perfil cobre tudo 👏</td></tr>`;
     }
     async function analyzeGaps() {
       const days = $("gap-days").value || "0";
@@ -2836,14 +2847,11 @@ def _gaps_data(days: int) -> dict:
             rows.extend(d["rows"])
 
     if days:
-        cutoff = datetime.now().astimezone() - timedelta(days=int(days))
+        cutoff_date = (datetime.now() - timedelta(days=int(days))).date()
 
         def recent(r) -> bool:
-            ds = str(r.get("Date") or "")[:10]
-            try:
-                return datetime.strptime(ds, "%Y-%m-%d").astimezone() >= cutoff
-            except Exception:  # noqa: BLE001
-                return False
+            d = _sheet_date(r.get("Date"))
+            return d is not None and d >= cutoff_date
 
         rows = [r for r in rows if recent(r)]
 
@@ -2944,43 +2952,6 @@ def _gaps_prompt(data: dict) -> str:
     lines.append("")
     lines.append("Formato da resposta: no máximo 8 tópicos, cada um com 1-2 frases. Priorize pelo impacto (frequência nas vagas × gap do candidato). Use apenas os números fornecidos; não invente.")
     return "\n".join(lines)
-
-
-def _ai_text(prompt: str) -> str:
-    secrets = _load_secrets()
-    # Gemini (google-genai)
-    key = secrets.get("GEMINI_API_KEY")
-    if key:
-        try:
-            from google import genai
-            client = genai.Client(api_key=key)
-            for model in ("gemini-2.5-flash", "gemini-2.0-flash"):
-                try:
-                    r = client.models.generate_content(model=model, contents=prompt)
-                    if getattr(r, "text", ""):
-                        return str(r.text).strip()
-                except Exception:  # noqa: BLE001
-                    continue
-        except Exception:  # noqa: BLE001
-            pass
-    # OpenAI / DeepSeek (compatíveis)
-    for env, url, model in (
-        ("OPENAI_API_KEY", "https://api.openai.com/v1/chat/completions", "gpt-4o-mini"),
-        ("DEEPSEEK_API_KEY", "https://api.deepseek.com/chat/completions", "deepseek-chat"),
-    ):
-        key = secrets.get(env)
-        if not key:
-            continue
-        try:
-            r = requests.post(url, timeout=60,
-                              headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                              json={"model": model, "temperature": 0.3, "max_tokens": 800,
-                                    "messages": [{"role": "user", "content": prompt}]})
-            if r.status_code == 200:
-                return str(r.json()["choices"][0]["message"]["content"]).strip()
-        except Exception:  # noqa: BLE001
-            continue
-    raise RuntimeError("nenhuma chave de IA configurada — adicione em Configurações → Segredos")
 
 
 def _load_secrets() -> dict:
@@ -3231,7 +3202,20 @@ class Handler(BaseHTTPRequestHandler):
             days = int((qs.get("days") or ["0"])[0])
             try:
                 data = _gaps_data(days)
-                return self._json(200, {"ok": True, "text": _ai_text(_gaps_prompt(data))})
+                webhook = os.environ.get("N8N_GAPS_WEBHOOK_URL") or _load_secrets().get("N8N_GAPS_WEBHOOK_URL") or "http://n8n:5678/webhook/careerops-gaps"
+                r = requests.post(webhook, json={"prompt": _gaps_prompt(data)}, timeout=180)
+                if r.status_code != 200:
+                    return self._json(400, {"ok": False, "error": f"n8n HTTP {r.status_code}"})
+                body = r.json()
+                text = ""
+                if isinstance(body, list) and body:
+                    body = body[0]
+                if isinstance(body, dict):
+                    text = str(body.get("text") or body.get("response") or body.get("content") or "")
+                text = text.strip()
+                if not text:
+                    return self._json(400, {"ok": False, "error": "resposta vazia do n8n"})
+                return self._json(200, {"ok": True, "text": text})
             except Exception as e:  # noqa: BLE001
                 return self._json(400, {"ok": False, "error": str(e)})
         if path == "/api/n8n/workflows":

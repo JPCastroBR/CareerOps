@@ -1,0 +1,111 @@
+{
+  "name": "careerops-gaps",
+  "description": "Analisa os gaps de competências (aba Mercado & Gaps) e devolve a priorização de estudos. Recebe {prompt} no webhook e responde com o texto da IA.",
+  "active": true,
+  "isArchived": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "careerops-gaps",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -320,
+        320
+      ],
+      "id": "5cc6e378-5fbc-4e12-9f03-56715e9ea3d0",
+      "name": "Webhook",
+      "webhookId": "678b6e1e-1f88-49c1-9acb-e3a9181bf6da"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.prompt }}",
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        0,
+        320
+      ],
+      "id": "e904c28e-40e3-4d65-8579-29bd09540178",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        80,
+        520
+      ],
+      "id": "17bf8c77-b411-4366-9ae9-389e3f712333",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "zXajfEyPnxUoFzej",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "versionId": "b97abdb5-a51a-4efe-90f3-d3afb9e8e651",
+  "activeVersionId": null,
+  "id": "72388a1b-cc66-435d-923e-3936a33e4bef",
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "createdAt": "2026-10-29T00:14:43.338Z",
+  "updatedAt": "2026-10-29T00:14:43.338Z"
+}
