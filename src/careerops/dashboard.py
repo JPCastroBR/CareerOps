@@ -172,8 +172,12 @@ main { width: 100%; max-width: 1760px; margin: 0 auto; padding: clamp(20px, 2.4v
 .dash-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
 .span-2 { grid-column: span 2; }
 .span-5 { grid-column: span 5; }
+.span-6 { grid-column: span 6; }
 .span-7 { grid-column: span 7; }
 .span-12 { grid-column: span 12; }
+@media (max-width: 1500px) {
+  .span-6 { grid-column: span 12; }
+}
 @media (max-width: 1400px) {
   .span-2 { grid-column: span 4; }
   .span-5, .span-7 { grid-column: span 12; }
@@ -715,7 +719,7 @@ details.block > .body { padding: 0 16px 16px; }
           <div class="card span-6">
             <div class="card-title">Mais pedidas pelo mercado</div>
             <div class="table-wrap"><table>
-              <thead><tr><th>Skill</th><th>Pedida em</th><th>% das vagas</th><th>Demanda</th><th>Situação</th></tr></thead>
+              <thead><tr><th>Skill</th><th>Pedida em</th><th>Demanda</th><th>Situação</th></tr></thead>
               <tbody id="gap-demand"></tbody>
             </table></div>
           </div>
@@ -1335,8 +1339,8 @@ details.block > .body { padding: 0 16px 16px; }
         const pct = d.total_jobs ? Math.round(s.count / d.total_jobs * 100) : 0;
         const chips = { strong: '<span class="chip yes">domina</span>', weak: '<span class="chip tag">parcial</span>', transferable: '<span class="chip tf">transferível</span>', missing: '<span class="chip no">faltando</span>' };
         const chip = chips[s.status] || chips.missing;
-        return `<tr><td><b>${esc(s.label || s.name)}</b></td><td class="mono">${s.count}</td><td class="mono">${pct}%</td><td><div class="mini-bar"><i style="width:${Math.min(100, pct)}%;background:linear-gradient(90deg,var(--accent),var(--violet))"></i></div></td><td>${chip}</td></tr>`;
-      }).join("") || `<tr><td colspan="5" class="empty">sem skills registradas ainda</td></tr>`;
+        return `<tr><td><b>${esc(s.label || s.name)}</b></td><td class="mono">${s.count} · ${pct}%</td><td><div class="mini-bar"><i style="width:${Math.min(100, pct)}%;background:linear-gradient(90deg,var(--accent),var(--violet))"></i></div></td><td>${chip}</td></tr>`;
+      }).join("") || `<tr><td colspan="4" class="empty">sem skills registradas ainda</td></tr>`;
       $("gap-missing").innerHTML = (d.gaps || []).map((s) => {
         const pct = d.total_jobs ? Math.round(s.count / d.total_jobs * 100) : 0;
         return `<tr><td><b>${esc(s.label || s.name)}</b></td><td class="mono">${s.count}</td><td class="mono">${s.ausentes}×</td><td><div class="mini-bar"><i style="width:${Math.min(100, pct)}%;background:linear-gradient(90deg,var(--err),var(--warn))"></i></div></td></tr>`;
