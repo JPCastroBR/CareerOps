@@ -470,6 +470,9 @@ details.block > .body { padding: 0 16px 16px; }
 .modal-head b { font-size: 15px; }
 .modal-desc { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0 0 14px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+.market-note { background: rgba(8, 12, 22, .4); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 12.5px; color: var(--muted); line-height: 1.65; margin-bottom: 16px; }
+.market-note b { color: var(--fg); }
+.market-note code { font-family: var(--mono); font-size: 11px; color: var(--accent-2); }
   </style>
 </head>
 <body>
@@ -699,10 +702,21 @@ details.block > .body { padding: 0 16px 16px; }
             <button class="icon-btn" onclick="loadGaps()" title="Atualizar">⟳</button>
           </div>
         </div>
+        <div class="market-note">
+          <b>De onde vem isto?</b> Cada vaga na planilha tem o campo <b>SKILLS_DA_VAGA</b>, preenchido pela IA — o que a vaga pede, classificado em
+          <span class="chip yes">domina</span> (evidência forte no perfil) · <span class="chip tag">parcial</span> (conhecimento/estudo) · <span class="chip no">faltando</span> (sem evidência).
+          Aqui agregamos isso e cruzamos com o <b>profile.yaml</b> (com apelidos via <code>skill_aliases</code>). <b>"Skills a melhorar"</b> = pedidas em muitas vagas mas com pouca/nenhuma evidência sua — priorize por frequência.
+        </div>
         <div class="cards" id="gap-cards"></div>
         <div class="dash-grid">
           <div class="card span-6"><div class="card-title">Mais pedidas pelo mercado</div><div id="gap-demand" class="chart-h"></div></div>
           <div class="card span-6"><div class="card-title">Gaps prioritários (o que melhorar)</div><div id="gap-missing" class="chart-h"></div></div>
+          <div class="card span-12">
+            <div class="card-title">Priorização (IA)</div>
+            <p class="msg" style="margin:0 0 10px">Envia esta análise para a IA e recebe o que priorizar para estudar, com justificativa e números.</p>
+            <button class="ghost" onclick="analyzeGaps()">Pedir análise</button>
+            <div id="gap-ai-out" style="white-space:pre-wrap;font-size:13px;color:var(--fg);margin-top:12px;line-height:1.6"></div>
+          </div>
         </div>
         <p class="msg" id="gap-msg"></p>
       </section>
@@ -1297,21 +1311,32 @@ details.block > .body { padding: 0 16px 16px; }
       if (!d || !d.ok) { $("gap-msg").textContent = "erro: " + (d && d.error ? d.error : "?"); return; }
       $("gap-msg").innerHTML = `${d.total_jobs} vagas · ${d.distinct_skills} skills pedidas · <span class="chip yes">domina</span> <span class="chip tag">parcial</span> <span class="chip no">faltando</span> · cobertura <b>${d.coverage_pct}%</b>`;
       $("gap-cards").innerHTML = [
-        ["Vagas analisadas", d.total_jobs],
+        ["Vagas na planilha", d.total_jobs],
         ["Skills pedidas", d.distinct_skills],
-        ["Cobertas pelo perfil", d.coverage_pct + "%"],
-        ["A melhorar", d.gaps.length],
+        ["Cobertura forte", d.coverage_pct + "%"],
+        ["Skills a melhorar", d.gaps.length],
       ].map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
       const colors = { strong: "linear-gradient(90deg,var(--ok),var(--cyan))", weak: "linear-gradient(90deg,var(--warn),var(--ok))", missing: "linear-gradient(90deg,var(--err),var(--warn))" };
       const label = { strong: "domina", weak: "parcial", missing: "faltando" };
       $("gap-demand").innerHTML = (d.demand || []).map((s) => {
         const pct = d.total_jobs ? Math.round(s.count / d.total_jobs * 100) : 0;
-        return `<div class="hbar"><div title="${esc(label[s.status])}">${esc(s.name)}</div><div class="track"><i style="width:${Math.min(100, pct)}%;background:${colors[s.status] || colors.missing}"></i></div><div class="val">${s.count}<small> ${pct}%</small></div></div>`;
+        return `<div class="hbar"><div title="${esc(label[s.status])}">${esc(s.label || s.name)}</div><div class="track"><i style="width:${Math.min(100, pct)}%;background:${colors[s.status] || colors.missing}"></i></div><div class="val">${s.count}<small> ${pct}%</small></div></div>`;
       }).join("") || `<div class="empty">sem skills registradas ainda</div>`;
       $("gap-missing").innerHTML = (d.gaps || []).map((s) => {
-        const pct = d.total_jobs ? Math.round(s.ausentes / d.total_jobs * 100) : 0;
-        return `<div class="hbar"><div title="requerida e sem evidência no perfil">${esc(s.name)}</div><div class="track"><i style="width:${Math.min(100, pct * 4)}%;background:linear-gradient(90deg,var(--err),var(--warn))"></i></div><div class="val">${s.ausentes}<small> sem evidência</small></div></div>`;
+        const pct = d.total_jobs ? Math.round(s.count / d.total_jobs * 100) : 0;
+        return `<div class="hbar"><div><b>${esc(s.label || s.name)}</b><span class="chip no" style="margin-left:6px">sem evidência ${s.ausentes}×</span></div><div class="track"><i style="width:${Math.min(100, pct)}%;background:linear-gradient(90deg,var(--err),var(--warn))"></i></div><div class="val">${s.count}<small> pedidas</small></div></div>`;
       }).join("") || `<div class="empty">perfil cobre tudo 👏</div>`;
+    }
+    async function analyzeGaps() {
+      const days = $("gap-days").value || "0";
+      $("gap-ai-out").textContent = "analisando…";
+      try {
+        const r = await fetch(`/api/gaps/ai?days=${days}`);
+        const jr = await r.json();
+        $("gap-ai-out").textContent = jr.ok ? jr.text : ("erro: " + (jr.error || "?"));
+      } catch (e) {
+        $("gap-ai-out").textContent = "erro de rede";
+      }
     }
 
     // ---------------------------------------------------------------- planilha
@@ -2796,7 +2821,12 @@ def _overview_data(days: int) -> dict:
 
 
 def _gaps_data(days: int) -> dict:
-    """Compara as skills pedidas nas vagas (SKILLS_DA_VAGA) com o profile.yaml."""
+    """Compara as skills pedidas nas vagas (SKILLS_DA_VAGA) com o profile.yaml.
+
+    Fonte: campo ``SKILLS_DA_VAGA`` que o n8n grava por vaga na planilha
+    (abas ``Jobs`` + ``Rejected-Jobs``). Cada skill é normalizada via
+    ``profile.yaml -> skill_aliases`` antes de contar.
+    """
     from collections import Counter, defaultdict
 
     rows: list = []
@@ -2817,6 +2847,34 @@ def _gaps_data(days: int) -> dict:
 
         rows = [r for r in rows if recent(r)]
 
+    # canonical: termo da vaga -> nome da skill do perfil
+    profile_skills: dict = {}
+    alias_to: dict = {}
+    try:
+        from careerops.profile import load_profile
+        p = load_profile()
+        aliases = p.get("skill_aliases") or {}
+        for s in (p.get("skills") or []):
+            nm = str(s.get("name") or "").strip()
+            if not nm:
+                continue
+            profile_skills[nm] = {
+                "label": str(s.get("label") or nm).strip(),
+                "level": str(s.get("level") or "").strip().lower(),
+            }
+            keys = [s.get("label"), nm] + [a for a in (aliases.get(nm) or [])]
+            for k in keys:
+                alias_to[str(k).strip().lower()] = nm
+    except Exception:  # noqa: BLE001
+        profile_skills = {}
+
+    def canon(raw) -> str | None:
+        s = re.sub(r"\(.*?\)", "", str(raw or "")).strip().strip("*").strip()
+        low = s.lower()
+        if not low or low == "n/a":
+            return None
+        return alias_to.get(low, low)
+
     demand: Counter = Counter()
     buckets = defaultdict(Counter)
     for r in rows:
@@ -2829,28 +2887,18 @@ def _gaps_data(days: int) -> dict:
             continue
         for b in ("hands_on", "relacionadas", "conhecimento", "ausentes"):
             for s in (sk.get(b) or []):
-                name = str(s).strip()
-                if not name or name.lower() == "n/a":
+                name = canon(s)
+                if not name:
                     continue
                 demand[name] += 1
                 buckets[b][name] += 1
 
     strong = {"hands_on", "working_knowledge"}
     weak = {"learning", "conceptual", "none"}
-    levels: dict = {}
-    try:
-        from careerops.profile import load_profile
-        profile = load_profile()
-        for s in (profile.get("skills") or []):
-            nm = str(s.get("label") or s.get("name") or "").strip().lower()
-            if nm:
-                levels[nm] = str(s.get("level") or "").strip().lower()
-    except Exception:  # noqa: BLE001
-        levels = {}
-
     items = []
     for name, c in demand.items():
-        lv = levels.get(name.lower())
+        ps = profile_skills.get(name)
+        lv = ps["level"] if ps else None
         if lv in strong:
             status = "strong"
         elif lv in weak:
@@ -2858,12 +2906,15 @@ def _gaps_data(days: int) -> dict:
         else:
             status = "missing"
         items.append({
-            "name": name, "count": c,
+            "name": name,
+            "label": ps["label"] if ps else name,
+            "count": c,
             "hands_on": buckets["hands_on"].get(name, 0),
             "relacionadas": buckets["relacionadas"].get(name, 0),
             "conhecimento": buckets["conhecimento"].get(name, 0),
             "ausentes": buckets["ausentes"].get(name, 0),
-            "status": status, "level": lv,
+            "status": status,
+            "level": lv,
         })
     items.sort(key=lambda x: -x["count"])
     strong_count = sum(1 for i in items if i["status"] == "strong")
@@ -2875,6 +2926,61 @@ def _gaps_data(days: int) -> dict:
         "demand": items[:15],
         "gaps": sorted([i for i in items if i["status"] != "strong"], key=lambda x: -x["ausentes"])[:15],
     }
+
+
+def _gaps_prompt(data: dict) -> str:
+    lines = [
+        "Você é um coach de carreira SRE/DevOps/Cloud. Analise os dados de mercado abaixo e responda em português, de forma direta, o que o candidato deve PRIORIZAR para estudar ou melhorar.",
+        f"Vagas analisadas: {data.get('total_jobs')} | skills distintas: {data.get('distinct_skills')} | cobertura forte: {data.get('coverage_pct')}%.",
+        "",
+        "Mais pedidas (skill — nº de vagas — situação: domina/parcial/faltando):",
+    ]
+    for s in (data.get("demand") or [])[:15]:
+        lines.append(f"- {s['label']}: {s['count']} vagas ({s['status']})")
+    lines.append("")
+    lines.append("Gaps (skill — pedida em N vagas — sem evidência no perfil em M):")
+    for s in (data.get("gaps") or [])[:15]:
+        lines.append(f"- {s['label']}: pedida em {s['count']}, sem evidência em {s['ausentes']}")
+    lines.append("")
+    lines.append("Formato da resposta: no máximo 8 tópicos, cada um com 1-2 frases. Priorize pelo impacto (frequência nas vagas × gap do candidato). Use apenas os números fornecidos; não invente.")
+    return "\n".join(lines)
+
+
+def _ai_text(prompt: str) -> str:
+    secrets = _load_secrets()
+    # Gemini (google-genai)
+    key = secrets.get("GEMINI_API_KEY")
+    if key:
+        try:
+            from google import genai
+            client = genai.Client(api_key=key)
+            for model in ("gemini-2.5-flash", "gemini-2.0-flash"):
+                try:
+                    r = client.models.generate_content(model=model, contents=prompt)
+                    if getattr(r, "text", ""):
+                        return str(r.text).strip()
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
+    # OpenAI / DeepSeek (compatíveis)
+    for env, url, model in (
+        ("OPENAI_API_KEY", "https://api.openai.com/v1/chat/completions", "gpt-4o-mini"),
+        ("DEEPSEEK_API_KEY", "https://api.deepseek.com/chat/completions", "deepseek-chat"),
+    ):
+        key = secrets.get(env)
+        if not key:
+            continue
+        try:
+            r = requests.post(url, timeout=60,
+                              headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                              json={"model": model, "temperature": 0.3, "max_tokens": 800,
+                                    "messages": [{"role": "user", "content": prompt}]})
+            if r.status_code == 200:
+                return str(r.json()["choices"][0]["message"]["content"]).strip()
+        except Exception:  # noqa: BLE001
+            continue
+    raise RuntimeError("nenhuma chave de IA configurada — adicione em Configurações → Segredos")
 
 
 def _load_secrets() -> dict:
@@ -3119,6 +3225,13 @@ class Handler(BaseHTTPRequestHandler):
             days = int((qs.get("days") or ["0"])[0])
             try:
                 return self._json(200, _gaps_data(days))
+            except Exception as e:  # noqa: BLE001
+                return self._json(400, {"ok": False, "error": str(e)})
+        if path == "/api/gaps/ai":
+            days = int((qs.get("days") or ["0"])[0])
+            try:
+                data = _gaps_data(days)
+                return self._json(200, {"ok": True, "text": _ai_text(_gaps_prompt(data))})
             except Exception as e:  # noqa: BLE001
                 return self._json(400, {"ok": False, "error": str(e)})
         if path == "/api/n8n/workflows":
