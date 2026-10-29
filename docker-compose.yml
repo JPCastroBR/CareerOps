@@ -16,7 +16,7 @@ services:
       - TELEGRAM_CURRICULO_BOT_TOKEN=${TELEGRAM_CURRICULO_BOT_TOKEN}
     volumes:
       - n8n_data:/home/node/.n8n
-      - /home/castro/Obsidian:/home/node/obsidian:rw
+      - ${OBSIDIAN_DIR:-./obsidian}:/home/node/obsidian:rw
       - ./n8n/workflows:/home/node/workflows
     networks:
       - rede_isolada

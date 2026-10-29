@@ -110,13 +110,8 @@ Python/Go → automação de infraestrutura, NÃO desenvolvimento de software
 Nunca substituir uma tecnologia por outra ou afirmar experiência na tecnologia exigida.
 
 PERFIL:
-13+ anos em Infraestrutura.
-Hands-on comprovado: OCI, Linux, Windows, Docker, Ansible, PowerShell, Bash, Grafana, Zabbix, New Relic, Elastic APM, HAProxy.
-AWS, Kubernetes, Terraform: conhecimento/certificação, sem assumir hands-on.
-Python/Go: automação de infraestrutura.
-Foco: Infra, Cloud, SRE, DevOps, Observabilidade.
-Inglês: técnico/profissional 6/10 em evolução.
-Local: São Paulo-SP.
+O perfil real do candidato (currículo, skills por nível, experiências) é injetado no
+payload como profile_context — use-o como única fonte de verdade, não este texto.
 
 REJEITAR / SCORE 0:
 sem descrição; QA/Tester; Backend/Frontend/Full Stack puro; Helpdesk/Service Desk; Scrum/Product; gestão; presencial no Brasil; internacional sem possibilidade de contratação no Brasil ou com exigência de direito de trabalho/cidadania local.

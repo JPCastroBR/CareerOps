@@ -501,7 +501,7 @@ details.block > .body { padding: 0 16px 16px; }
       <span class="logo-mark">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>
       </span>
-      <span class="brand-text">CareerOps<small>job intelligence · CareerOps</small></span>
+      <span class="brand-text">CareerOps<small>job intelligence</small></span>
     </a>
     <nav class="mainnav">
       <button data-view="inicio" class="active">Início</button>
@@ -1013,7 +1013,7 @@ details.block > .body { padding: 0 16px 16px; }
   </div>
 
   <footer class="app-footer">
-    <span><b>CareerOps</b> · projeto de CareerOps</span>
+    <span><b>CareerOps</b> · pipeline de busca de vagas</span>
     <a href="https://github.com/JPCastroBR/CareerOps" target="_blank">github.com/JPCastroBR/CareerOps ↗</a>
   </footer>
 
@@ -2333,11 +2333,7 @@ function evidenceText(v) {
 }
 function experienceCompanies() { return [...new Set((docWorking.experience || []).map((e) => e.company).filter(Boolean))]; }
 function shortCompany(c) {
-  const s = String(c || "");
-  if (/Empresa Exemplo/i.test(s)) return "Empresa Exemplo";
-  if (/Tray|LWSA/i.test(s)) return "Tray";
-  if (/Empresa Exemplo/i.test(s)) return "Empresa Exemplo";
-  return s;
+  return String(c || "");
 }
 function matchCompany(v) {
   const list = experienceCompanies();

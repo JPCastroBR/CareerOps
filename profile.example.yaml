@@ -1,0 +1,429 @@
+# profile.yaml — EXEMPLO / template.
+# Copie para profile.yaml e preencha com os seus dados (ou use "Perfil > Preencher com IA").
+# Seções instrucionais (level_definitions, classification_rules, matching_guidance,
+# title_matching, skill_aliases, skill_groups) já vêm preenchidas como padrão; ajuste ao seu caso.
+profile_version: 2
+source_of_truth: true
+level_definitions:
+  hands_on: Experiência prática profissional comprovada ou informada diretamente pelo
+    usuário.
+  working_knowledge: Conhecimento funcional com alguma prática, sem evidência de experiência
+    profissional sólida ou autonomia plena.
+  learning: Tecnologia ou competência em estudo.
+  conceptual: Conhecimento conceitual sem prática suficiente para execução independente.
+  none: Sem evidência suficiente de conhecimento ou experiência; não afirma ausência
+    definitiva.
+source_definitions:
+  cv: Extraído do currículo.
+  user: Confirmado diretamente pelo usuário.
+  project: Identificado em código ou arquivos do CareerOps.
+status_definitions:
+  confirmed: Baseado em evidência disponível.
+  not_assessed: Sem evidência confirmada; competência não avaliada.
+classification_rules:
+- Nunca elevar automaticamente learning -> working_knowledge -> hands_on.
+- Curso, certificação ou laboratório não implica experiência prática.
+- Ausência no currículo não implica ausência de experiência profissional.
+- Não atribuir origem documental (cv) a experiência informada somente pelo usuário.
+identity:
+  name: Seu Nome
+  location_key: ''
+  linkedin_public: false
+  github_public: false
+professional_objective: 'Descreva em 2-4 linhas o que busca (cargo, área e objetivo).'
+target_roles:
+  primary: []
+  adjacent: []
+  also_acceptable: ''
+seniority:
+  target: ''
+  current:
+    it_total_years: 0
+    infrastructure_focus_years: 0
+  open_to_levels: []
+  evaluation_rule: Classificar por experiência efetiva, responsabilidades, autonomia
+    e requisitos da vaga; nunca apenas pelo título.
+# Exemplo de experiência (remova o # e preencha):
+# experience:
+# - company: Empresa Exemplo
+#   role: Cargo
+#   period: 2020-01..present
+#   current: true
+#   focus: Resumo do foco
+#   responsibilities:
+#   - Atividade 1
+#   - Atividade 2
+#   technologies:
+#   - linux
+#   - docker
+#   source:
+#   - cv
+experience: []
+certifications: []
+education: []
+languages: []
+work_preferences:
+  remote_brazil:
+    preferred: true
+    acceptable: true
+    source: []
+  hybrid_brazil:
+    preferred: false
+    acceptable: true
+    source: []
+  onsite_brazil:
+    preferred: false
+    acceptable: false
+    source: []
+  international_remote_hire_br:
+    acceptable: false
+    source: []
+  relocation:
+    acceptable: false
+    condition: ''
+    source: []
+location:
+  city: ''
+  state: ''
+  country: Brazil
+  timezone: America/Sao_Paulo
+restrictions: []
+desired_job_types: []
+undesired_job_types: []
+matching_guidance:
+  primary_signal: Função principal e responsabilidades da vaga.
+  secondary_signals:
+  - senioridade evidenciada
+  - autonomia
+  - modalidade
+  - localização
+  - requisitos obrigatórios
+  - requisitos desejáveis
+  level_priority:
+  - hands_on
+  - working_knowledge
+  - learning
+  - conceptual
+  - none
+  learning_gap_never_auto_reject: true
+  keyword_overlap_never_auto_approve: true
+  differentiate_must_have_vs_nice_to_have: true
+  accept_transition_roles: true
+  seniority_by_evidence_not_title: true
+title_matching:
+  target:
+  - category: sre
+    keywords:
+    - sre
+    - site reliability
+    - reliability
+    - engenheiro de confiabilidade
+    - engenheira de confiabilidade
+  - category: devops
+    keywords:
+    - devops
+    - dev ops
+    - devsecops
+    - dev secops
+  - category: platform
+    keywords:
+    - platform engineer
+    - platform engineering
+    - engenheiro de plataforma
+    - engenheira de plataforma
+    - platform operations
+    - platform ops
+  - category: cloud
+    keywords:
+    - cloud engineer
+    - cloud infrastructure
+    - cloud operations
+    - cloud ops
+    - cloud administrator
+    - cloud admin
+    - engenheiro de cloud
+    - engenheira de cloud
+  - category: infrastructure
+    keywords:
+    - infrastructure engineer
+    - infrastructure analyst
+    - infrastructure
+    - infraestrutura
+    - system administrator
+    - systems administrator
+    - sysadmin
+    - administrador de sistemas
+    - analista de infraestrutura
+  - category: observability
+    keywords:
+    - observability
+    - observabilidade
+    - monitoring engineer
+  off_profile:
+  - category: dev_software
+    hard: true
+    keywords:
+    - full stack
+    - fullstack
+    - front end
+    - frontend
+    - back end
+    - backend
+    - mobile
+    - ios
+    - android
+    - flutter
+    - developer
+    - developers
+    - desenvolvedor
+    - desenvolvedora
+    - software engineer
+    - software developer
+    - engenheiro de software
+    - engenheira de software
+  - category: data_ml
+    hard: true
+    keywords:
+    - data engineer
+    - engenheiro de dados
+    - data platform
+    - machine learning
+    - mlops
+    - ai engineer
+    - data scientist
+    - cientista de dados
+    - analytics engineer
+  - category: qa
+    hard: true
+    keywords:
+    - qa
+    - tester
+    - testador
+    - teste
+    - testes
+    - test automation
+    - quality engineer
+    - quality assurance
+    - analista de qualidade
+    - analista de testes
+  - category: product_management
+    hard: true
+    keywords:
+    - product manager
+    - product owner
+    - gerente de produto
+    - product analyst
+    - analista de produto
+    - project manager
+    - gerente de projeto
+    - scrum
+    - agile coach
+    - pmo
+  - category: sales
+    hard: true
+    keywords:
+    - sales
+    - venda
+    - vendas
+    - pre sales
+    - pre-sales
+    - account executive
+    - executivo de contas
+  - category: support
+    hard: true
+    keywords:
+    - helpdesk
+    - help desk
+    - service desk
+    - suporte
+    - support analyst
+    - analista de suporte
+    - technical support
+  - category: erp_dba
+    hard: true
+    keywords:
+    - dba
+    - database administrator
+    - administrador de banco de dados
+    - sap
+    - erp
+    - dynamics
+    - servicenow
+    - salesforce
+  - category: management
+    hard: true
+    keywords:
+    - director
+    - diretor
+    - cto
+    - cio
+    - manager
+    - gerente
+    - head of
+    - head de
+    - coordinator
+    - coordenador
+    - vice president
+  - category: tech_lead
+    hard: false
+    keywords:
+    - tech lead
+    - technical lead
+    - lead engineer
+    - lider tecnico
+    - lider de equipe
+  - category: architect
+    hard: false
+    keywords:
+    - solutions architect
+    - solution architect
+    - cloud architect
+    - arquiteto de solucoes
+    - arquiteto cloud
+    - arquiteto de nuvem
+  - category: security
+    hard: false
+    keywords:
+    - security analyst
+    - analista de seguranca
+    - cybersecurity
+    - cyber security
+    - soc analyst
+    - penetration
+    - red team
+    - siem
+    - threat hunter
+    - forensics
+skill_aliases:
+  infrastructure_as_code:
+  - terraform
+  - infra as code
+  - infrastructure as code
+  - iac
+  kubernetes:
+  - kubernetes
+  - k8s
+  - eks
+  - aks
+  - gke
+  - openshift
+  aws:
+  - aws
+  - amazon web services
+  azure:
+  - azure
+  gcp:
+  - gcp
+  - google cloud
+  docker:
+  - docker
+  - container
+  - containers
+  - containerizacao
+  - containerização
+  observability_practices:
+  - observability
+  - observabilidade
+  - slo
+  - sli
+  - monitoring
+  - monitoramento
+  - metricas
+  - métricas
+  monitoring:
+  - prometheus
+  - alertmanager
+  - loki
+  - jaeger
+  - opentelemetry
+  ci_cd:
+  - ci cd
+  - ci/cd
+  - pipeline
+  - pipelines
+  - continuous integration
+  - continuous delivery
+  linux:
+  - linux
+  - rhel
+  - debian
+  - ubuntu
+  windows_server:
+  - windows server
+  - windows
+  active_directory:
+  - active directory
+  - gpo
+  - group policy
+  new_relic:
+  - new relic
+  elastic_apm:
+  - elastic apm
+  - elastic
+  load_balancing_haproxy:
+  - haproxy
+  - load balancer
+  - load balancing
+  - balanceamento de carga
+  virtualization_vmware:
+  - vmware
+  - vsphere
+  - vcenter
+  high_availability:
+  - high availability
+  - alta disponibilidade
+  - disaster recovery
+  - resiliencia
+  - resiliência
+  gitops:
+  - gitops
+  - argo cd
+  - argocd
+  - fluxcd
+  - flux
+  backup_operations:
+  - backup
+  - veeam
+  - rclone
+  networking:
+  - networking
+  - redes
+  - dns
+  - dhcp
+  - vpn
+  - firewall
+  - subnet
+  - routing
+  - roteamento
+skill_groups:
+- name: Automação
+  kind: hard
+- name: Backup
+  kind: hard
+- name: Bancos de Dados
+  kind: hard
+- name: Comportamental
+  kind: soft
+- name: Containers e Orquestração
+  kind: hard
+- name: Infraestrutura
+  kind: hard
+- name: Monitoramento e Observabilidade
+  kind: hard
+- name: Nuvem
+  kind: hard
+- name: Operações
+  kind: hard
+- name: Redes e Segurança
+  kind: hard
+- name: Sistemas Operacionais
+  kind: hard
+# Exemplo de skill (remova o # e preencha):
+# skills:
+# - name: docker
+#   label: Docker
+#   group: Containers e Orquestração
+#   level: hands_on
+#   companies:
+#   - Empresa Exemplo
+skills: []

@@ -1,0 +1,70 @@
+{
+  "_comment": "CareerOps external configuration (EXEMPLO). Copie para config.json e ajuste. Todos os campos são OPCIONAIS; sem config.json o pipeline usa um fallback seguro (worldwide, remoto). Valores em inglês (nomes canônicos do JobSpy).",
+  "search_query": "\"Engenheiro de Software\" OR Developer OR Backend OR \"Site Reliability Engineer\" OR DevOps",
+  "results_per_source": 500,
+  "hours_old": 24,
+  "targets": [
+    {
+      "country": "Brazil",
+      "work_mode": "remote"
+    }
+  ],
+  "work_modes": ["remote", "hybrid"],
+  "title_blocklist": [
+    "estágio",
+    "intern",
+    "junior",
+    "manager",
+    "head of",
+    "director",
+    "coordenador",
+    "qa",
+    "tester",
+    "suporte",
+    "support",
+    "service desk",
+    "sales",
+    "frontend",
+    "mobile",
+    "data scientist",
+    "machine learning",
+    "sap"
+  ],
+  "company_blocklist": [
+    "jobgether",
+    "quik hire staffing",
+    "lensa",
+    "grabjobs",
+    "jobrapido"
+  ],
+  "banks": [
+    { "name": "Itaú", "subdomain": "vemproitau", "source": "gupy" },
+    { "name": "Santander", "subdomain": "santander.wd3.myworkdayjobs.com", "source": "workday", "workday": { "tenant": "santander", "site": "SantanderCareers" } }
+  ],
+  "bank_results_per_bank": 50,
+  "bank_include_keywords": ["sre", "devops", "platform", "infrastructure", "cloud", "kubernetes", "terraform"],
+  "inhire": {
+    "enabled": true,
+    "companies": [],
+    "companies_file": "data/inhire_companies.json",
+    "results_per_company": 30,
+    "include_keywords": []
+  },
+  "scan_sources": ["linkedin", "indeed", "gupy", "workday", "inhire"],
+  "schedule": {
+    "enabled": true,
+    "timezone": "America/Sao_Paulo",
+    "times": ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00"],
+    "digest_at": "21:00",
+    "misfire_grace_minutes": 30,
+    "source_frequency": {
+      "linkedin": "every",
+      "indeed": "every",
+      "gupy": "daily",
+      "workday": "daily",
+      "inhire": "daily"
+    }
+  },
+  "prompt": "Você é um Tech Recruiter Sênior. Avalie o FIT entre candidato e vaga e reescreva o RESUMO PROFISSIONAL para maximizar o match ATS sem inventar experiência.\n\nO currículo é a única fonte de verdade sobre as competências do candidato. A descrição da vaga NÃO é evidência de que o candidato possui uma tecnologia.\n\nClassifique cada requisito em:\n- hands_on = uso profissional comprovado no currículo\n- relacionadas = experiência prática em tecnologia/conceito diferente, mas relevante\n- conhecimento = curso, certificação ou estudo sem prática profissional\n- ausentes = sem evidência\n\nNunca inferir hands_on por uma certificação ou pela presença da tecnologia na descrição da vaga. Retorne o resumo em 200-400 palavras e o score de 0 a 100.",
+  "max_description_chars": 4000
+}

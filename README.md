@@ -448,7 +448,7 @@ Dashboard web leve (stdlib, sem deps extras) ao lado do n8n:
 - **Visão geral**: 6 KPIs com percentuais reais, funil (pegas, compatíveis, rejeitadas, entrevistas), donut, faixas de score 70–80/80–90/90–100, plataformas, evolução temporal e vagas vistas com link, colunas **Enviada (n8n)**, **Enviado em**, **Analisada (IA)** e botão **Reenviar**.
 - **Vagas/Analisadas**: títulos são links diretos para a vaga, com **paginação** (25/página) e botão **Reenviar** nas Analisadas; tabelas responsivas escondem colunas menos críticas no mobile.
 - **Vaga manual por URL**: botão na aba Vagas abre um modal — cola o link de uma vaga, o dashboard extrai título/descrição e envia ao n8n (segue o fluxo normal até a planilha).
-- **Rodapé**: assinatura **CareerOps · projeto de CareerOps** com link para o repositório oficial.
+- **Rodapé**: assinatura **CareerOps · pipeline de busca de vagas** com link para o repositório oficial.
 - **Analisadas**: tabela + CSV `data/telemetry/jobs_analyzed.csv` (data, empresa, título, local, fonte, score) com download.
 - **Configuração**: seções numeradas — **1. Busca**, **2. Países e modalidades**, **3. Fontes**, **4. Filtros** — com **fontes por plataforma** (LinkedIn, Indeed, Gupy, Workday, InHire, Outros), **detecção por domínio** (inclui outras plataformas) e grupos por plataforma com **habilitar/desabilitar**, domínio, filtro e edição
 - **Perfil**: **1. Objetivo**, **2. Experiência**, **3. Formação/Idiomas/Certificações**, **4. Experiência**, **5. Competências** (grupos hard/soft, skill com grupo+nível), **6. Apelidos de skills** (`skill_aliases`: ex. `kubernetes → k8s, eks, gke`), **7. Preferências de vaga** + Outros campos e prévia YAML

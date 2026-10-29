@@ -25,6 +25,19 @@ vagas_processadas.txt
 credentials/
 *.json
 
+# Config/perfil pessoais — não versionar; use os arquivos .example
+config.json
+profile.yaml
+
+# Negar os exemplos (versionados no lugar dos pessoais)
+!config.example.json
+
+# Scripts pessoais de análise (ad-hoc, com dados locais)
+analyze_jobs.py
+build_strategy_xlsx.py
+extract_companies.py
+companies_extracted.csv
+
 # VS Code
 .vscode/
 
