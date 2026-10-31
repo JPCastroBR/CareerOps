@@ -136,6 +136,7 @@ body::after {
   50% { transform: translate(1%, 2%) rotate(2deg) scale(1.06); opacity: 1; }
   100% { transform: translate(3%, -1%) rotate(-1deg) scale(1.02); opacity: .9; }
 }
+@keyframes barIn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 a { color: var(--accent-2); }
 a:hover { color: #8ef2ff; }
 
@@ -245,24 +246,25 @@ main { width: 100%; max-width: 1760px; margin: 0 auto; padding: clamp(20px, 2.4v
 
 /* ---------------- charts ---------------- */
 .chart { display: flex; align-items: flex-end; gap: 5px; height: 190px; margin-top: 4px; padding: 14px 14px 22px; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .025) 0 1px, transparent 1px 38px), rgba(8, 12, 22, .35); }
-.chart .bar { flex: 1 0 9px; min-width: 9px; background: linear-gradient(180deg, #00d9ff, #7928ca); border-radius: 5px 5px 0 0; position: relative; box-shadow: 0 0 16px rgba(0, 217, 255, .16); }
+.chart .bar { flex: 1 0 9px; min-width: 9px; background: linear-gradient(180deg, #00d9ff, #7928ca); border-radius: 6px 6px 2px 2px; position: relative; box-shadow: 0 0 18px rgba(0, 217, 255, .35), inset 0 1px 0 rgba(255, 255, 255, .25); transition: filter .2s; }
+.chart .bar:hover { filter: brightness(1.18); }
 .chart .bar span { position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%); font-size: 9.5px; color: var(--dim); white-space: nowrap; }
 .chart-empty { display: flex; align-items: center; justify-content: center; height: 160px; color: var(--dim); font-size: 12.5px; border: 1px dashed var(--line); border-radius: var(--radius); }
 .chart-h { display: flex; flex-direction: column; gap: 11px; margin-top: 2px; }
 .hbar { display: grid; grid-template-columns: 130px minmax(0, 1fr) 92px; gap: 12px; align-items: center; font-size: 12px; }
 .hbar > div:first-child { color: var(--muted); }
-.hbar .track { height: 9px; background: rgba(255, 255, 255, .05); border-radius: 999px; overflow: hidden; }
-.hbar .track i { display: block; height: 100%; border-radius: 999px; }
+.hbar .track { height: 10px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .04); border-radius: 999px; overflow: hidden; }
+.hbar .track i { display: block; height: 100%; border-radius: 999px; box-shadow: 0 0 12px rgba(0, 217, 255, .3); transform-origin: left; animation: barIn .7s cubic-bezier(.22, .61, .36, 1); }
 .hbar .val { text-align: right; font-weight: 800; color: var(--fg); }
 .hbar .val small { color: var(--dim); font-weight: 600; font-size: 10px; margin-left: 4px; }
 .funnel-row { display: grid; grid-template-columns: 118px minmax(0, 1fr) 100px; gap: 14px; align-items: center; margin: 9px 0; }
 .funnel-row .lbl { color: var(--muted); font-size: 12px; font-weight: 600; }
 .funnel-row .bar { height: 10px; background: rgba(255, 255, 255, .05); border: none; border-radius: 999px; overflow: hidden; }
-.funnel-row .bar > i { display: block; height: 100%; border-radius: 999px; }
+.funnel-row .bar > i { display: block; height: 100%; border-radius: 999px; box-shadow: 0 0 12px rgba(0, 217, 255, .3); transform-origin: left; animation: barIn .7s cubic-bezier(.22, .61, .36, 1); }
 .funnel-row .val { text-align: right; font-weight: 800; font-size: 13px; }
 .funnel-row .val small { color: var(--dim); font-weight: 600; font-size: 10.5px; margin-left: 5px; }
 .donut-wrap { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; padding: 4px 0; }
-.donut { width: 166px; height: 166px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
+.donut { width: 166px; height: 166px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 0 30px rgba(0, 217, 255, .18), inset 0 0 0 1px rgba(255, 255, 255, .06); }
 .donut::after { content: ""; position: absolute; width: 104px; height: 104px; border-radius: 50%; background: var(--panel-2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04); }
 .donut .lbl { position: relative; z-index: 1; text-align: center; color: var(--muted); font-size: 11px; }
 .donut .lbl b { display: block; font-size: 24px; color: var(--fg); line-height: 1.1; }
@@ -510,7 +512,7 @@ details.block > .body { padding: 0 16px 16px; }
 .market-note b { color: var(--fg); }
 .market-note code { font-family: var(--mono); font-size: 11px; color: var(--accent-2); }
 .mini-bar { height: 8px; background: rgba(255, 255, 255, .06); border-radius: 999px; overflow: hidden; min-width: 120px; }
-.mini-bar i { display: block; height: 100%; border-radius: 999px; }
+.mini-bar i { display: block; height: 100%; border-radius: 999px; box-shadow: 0 0 10px rgba(0, 217, 255, .3); transform-origin: left; animation: barIn .7s cubic-bezier(.22, .61, .36, 1); }
 .chip.tf { background: rgba(45, 212, 191, .14); color: #6ee7db; }
 .fab { position: fixed; right: 24px; bottom: 24px; z-index: 90; display: inline-flex; align-items: center; gap: 9px; padding: 12px 18px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--fg); font-weight: 700; font-size: 13px; cursor: pointer; box-shadow: var(--shadow); font-family: var(--font); }
 .fab:hover { border-color: rgba(0, 217, 255, .5); transform: translateY(-1px); }
@@ -1348,10 +1350,10 @@ details.block > .body { padding: 0 16px 16px; }
       set("k-score-sub", "média 0–100");
 
       const stages = [
-        ["Pegas", pegas, "#4c8dff"],
-        ["Compatíveis", d.aprovadas || 0, "#2fd48b"],
-        ["Rejeitadas", d.rejeitadas || 0, "#fb7185"],
-        ["Entrevistas", d.entrevistas || 0, "#f5b942"],
+        ["Pegas", pegas, "#00d9ff"],
+        ["Compatíveis", d.aprovadas || 0, "#00ff88"],
+        ["Rejeitadas", d.rejeitadas || 0, "#ff4d7e"],
+        ["Entrevistas", d.entrevistas || 0, "#ffb454"],
       ];
       const maxVal = Math.max(1, pegas);
       $("funnel").innerHTML = stages.map(([label, val, color]) => {
@@ -1362,10 +1364,10 @@ details.block > .body { padding: 0 16px 16px; }
 
       const total = (d.aprovadas || 0) + (d.rejeitadas || 0);
       const pct = total ? Math.round((d.aprovadas / total) * 100) : 0;
-      $("donut-wrap").innerHTML = `<div class="donut" style="background:conic-gradient(#2fd48b 0 ${pct}%, #fb7185 ${pct}% 100%)"><div class="lbl"><b>${pct}%</b>compatíveis</div></div>
+      $("donut-wrap").innerHTML = `<div class="donut" style="background:conic-gradient(from -90deg, #00ff88 0 ${pct}%, #ff4d7e ${pct}% 100%)"><div class="lbl"><b>${pct}%</b>compatíveis</div></div>
         <div class="legend">
-          <div><span class="dot" style="background:#2fd48b"></span>Compatíveis <b>${d.aprovadas || 0}</b></div>
-          <div><span class="dot" style="background:#fb7185"></span>Rejeitadas <b>${d.rejeitadas || 0}</b></div>
+          <div><span class="dot" style="background:#00ff88;box-shadow:0 0 8px #00ff88"></span>Compatíveis <b>${d.aprovadas || 0}</b></div>
+          <div><span class="dot" style="background:#ff4d7e;box-shadow:0 0 8px #ff4d7e"></span>Rejeitadas <b>${d.rejeitadas || 0}</b></div>
         </div>`;
       $("donut-note").innerHTML = `<span>Total analisado <b>${total}</b></span><span>Compatíveis <b>${pct}%</b></span>`;
 
@@ -1386,7 +1388,7 @@ details.block > .body { padding: 0 16px 16px; }
       }
 
       const bands = d.score_bands || {};
-      const bandList = [["70–80", bands["70-80"] || 0, "#7cb0ff"], ["80–90", bands["80-90"] || 0, "#a78bfa"], ["90–100", bands["90-100"] || 0, "#f5b942"]];
+      const bandList = [["70–80", bands["70-80"] || 0, "#00d9ff"], ["80–90", bands["80-90"] || 0, "#b16cf0"], ["90–100", bands["90-100"] || 0, "#ffb454"]];
       const bandTotal = d.score_total || bandList.reduce((a, b) => a + b[1], 0);
       const maxBand = Math.max(1, ...bandList.map((b) => b[1]));
       $("chart-bands").innerHTML = bandList.map(([label, val, color]) => {
@@ -1395,11 +1397,11 @@ details.block > .body { padding: 0 16px 16px; }
       }).join("");
       $("bands-note").innerHTML = `<span>Base pontuada <b>${bandTotal}</b></span><span>Faixas de 70 a 100</span>`;
 
-      const COLORS = { LinkedIn: "#4c8dff", Indeed: "#a78bfa", Gupy: "#2fd48b", Workday: "#f5b942", InHire: "#2dd4bf", Outros: "#8ea2c4" };
+      const COLORS = { LinkedIn: "#00d9ff", Indeed: "#b16cf0", Gupy: "#00ff88", Workday: "#ffb454", InHire: "#50e3c2", Outros: "#9fb2d4" };
       const plats = d.platforms || [];
       const maxP = Math.max(1, ...plats.map((p) => p.count));
       $("chart-platform").innerHTML = plats.map((p) => {
-        const c = COLORS[p.name] || "#8ea2c4";
+        const c = COLORS[p.name] || "#9fb2d4";
         const pctP = pegas ? Math.round((p.count / pegas) * 100) : 0;
         return `<div class="hbar"><div>${esc(p.name)}</div><div class="track"><i style="width:${Math.round((p.count / maxP) * 100)}%;background:linear-gradient(90deg, ${c}, ${c}aa)"></i></div><div class="val">${p.count}<small>${pctP}%</small></div></div>`;
       }).join("") || `<div class="msg">sem dados</div>`;
