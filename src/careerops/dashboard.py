@@ -245,7 +245,7 @@ main { width: 100%; max-width: 1760px; margin: 0 auto; padding: clamp(20px, 2.4v
 .kpi.c-cyan { --c: #2dd4bf; }
 
 /* ---------------- charts ---------------- */
-.chart { display: flex; align-items: flex-end; gap: 5px; height: 190px; margin-top: 4px; padding: 14px 14px 22px; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .025) 0 1px, transparent 1px 38px), rgba(8, 12, 22, .35); }
+.chart { display: flex; align-items: flex-end; gap: 5px; height: 200px; margin-top: 4px; padding: 20px 14px 22px; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .025) 0 1px, transparent 1px 38px), rgba(8, 12, 22, .35); }
 .chart .bar { flex: 1 0 9px; min-width: 9px; background: linear-gradient(180deg, #00d9ff, #7928ca); border-radius: 6px 6px 2px 2px; position: relative; box-shadow: 0 0 18px rgba(0, 217, 255, .35), inset 0 1px 0 rgba(255, 255, 255, .25); transition: filter .2s; }
 .chart .bar:hover { filter: brightness(1.18); }
 .chart .bar span { position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%); font-size: 9.5px; color: var(--dim); white-space: nowrap; }
@@ -1378,12 +1378,12 @@ details.block > .body { padding: 0 16px 16px; }
         dayBox.innerHTML = `<div class="chart-empty">Sem dados suficientes no período.</div>`;
       } else {
         const maxDay = Math.max(1, ...by.map((x) => x.count));
-        const showCounts = by.length <= 20;
         dayBox.innerHTML = by.map((x, i) => {
           const showLabel = by.length <= 12 || i % Math.ceil(by.length / 8) === 0;
           const label = showLabel ? (x.date.length === 7 ? x.date.slice(5) + "/" + x.date.slice(0, 4) : x.date.slice(5).replace("-", "/")) : "";
           const h = Math.max(2, Math.round((x.count / maxDay) * 120));
-          return `<div class="bar" style="height:${h}px" title="${x.date}: ${x.count}"><span>${label}</span>${showCounts ? `<b style="position:absolute;top:-15px;left:0;right:0;text-align:center;font-size:9px;color:var(--fg)">${x.count}</b>` : ""}</div>`;
+          const num = x.count > 0 ? `<b style="position:absolute;top:-17px;left:0;right:0;text-align:center;font-size:9.5px;font-weight:800;color:var(--accent-2);text-shadow:0 1px 3px rgba(0,0,0,.65)">${x.count}</b>` : "";
+          return `<div class="bar" style="height:${h}px" title="${x.date}: ${x.count}"><span>${label}</span>${num}</div>`;
         }).join("");
       }
 
