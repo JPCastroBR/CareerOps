@@ -748,7 +748,7 @@ details.block > .body { padding: 0 16px 16px; }
           <select id="sheet-entrevista" style="width:auto" title="Filtrar por situação da entrevista">
             <option value="">Entrevista: todas</option>
           </select>
-          <input type="search" id="sheet-q" placeholder="Filtrar por título ou empresa…" autocomplete="off" style="max-width:280px" />
+          <input type="text" id="sheet-q" name="vagas-q" placeholder="Filtrar por título ou empresa…" autocomplete="off" spellcheck="false" style="max-width:280px" />
           <button class="ghost" onclick="loadSheets(true)">Atualizar</button>
           <span class="msg" id="sheet-msg"></span>
         </div>
@@ -771,7 +771,7 @@ details.block > .body { padding: 0 16px 16px; }
           <h1>Analisadas (local)</h1>
           <p>Registro local gerado pelo coletor. <a href="/api/jobs.csv">Baixar CSV</a></p>
         </div>
-        <div class="toolbar"><input type="search" id="jobs-q" placeholder="Filtrar por título ou empresa…" autocomplete="off" style="max-width:280px" /><button class="ghost" onclick="loadJobsCSV()">Atualizar</button><span class="msg" id="jobs-msg"></span></div>
+        <div class="toolbar"><input type="text" id="jobs-q" name="jobs-q" placeholder="Filtrar por título ou empresa…" autocomplete="off" spellcheck="false" style="max-width:280px" /><button class="ghost" onclick="loadJobsCSV()">Atualizar</button><span class="msg" id="jobs-msg"></span></div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Data</th><th>Empresa</th><th>Título</th><th>Local</th><th>Fonte</th><th>Score Local</th><th>Score IA</th><th></th></tr></thead>
@@ -1032,7 +1032,7 @@ details.block > .body { padding: 0 16px 16px; }
     <div class="modal">
       <div class="modal-head"><b>Adicionar vaga por URL</b><button class="ghost" onclick="closeManualModal()">✕</button></div>
       <p class="modal-desc">Cole o link de uma vaga que achou interessante. O CareerOps <b>baixa a página</b>, extrai título e descrição e envia para a <b>IA</b> analisar (score + skills). O resultado entra no fluxo normal da planilha: <b>Jobs</b> se score &gt; 71, senão <b>Rejected-Jobs</b>.</p>
-      <input type="url" id="manual-url" placeholder="https://…" autocomplete="off" spellcheck="false" />
+      <input type="url" id="manual-url" name="manual-url" placeholder="https://…" autocomplete="off" spellcheck="false" />
       <div class="modal-actions">
         <button class="ghost" onclick="closeManualModal()">Cancelar</button>
         <button class="act" onclick="manualAdd()">Enviar para análise</button>
@@ -2931,6 +2931,7 @@ function renderSections(container, sections, curated) {
     const initialView = (location.hash || "#inicio").replace("#", "");
     show(initialView);
     window.addEventListener("hashchange", () => show((location.hash || "#inicio").replace("#", "")));
+    window.addEventListener("load", () => setTimeout(() => { ["sheet-q", "jobs-q", "manual-url"].forEach((id) => { const el = $(id); if (el) el.value = ""; }); }, 300));
   </script>
 </body>
 </html>
